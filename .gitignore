@@ -1,0 +1,35 @@
+Models/
+datasets
+mt5_small-diff-directions/directions
+NLLB-1.3B-diff-directions/directions
+nllb_diff_hind_dirs/directions
+nllb-200-diff-dirs/directions
+
+# Ignore checkpoints
+checkpoints/
+checkpoint/
+*.ckpt
+*.bin
+*.pt
+*.pth
+*.safetensors
+
+# Ignore outputs
+outputs/
+results/
+logs/
+runs/
+wandb/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store

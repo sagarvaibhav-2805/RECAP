@@ -1,0 +1,36 @@
+eng2mun{
+  "directions": [
+    {
+      "direction_name": "eng2mun",
+      "src_lang": "eng_Latn",
+      "tgt_lang": "mundari_Deva",
+      "src_col": "English",
+      "tgt_col": "Mundari",
+      "model_name": "facebook/nllb-200-distilled-600M",
+      "offline_model_dir": "/home/scai/msr/aiy257590/scratch/Adivaani/Seq2Seq-based-Models/nllb-200-distilled-600M",
+      "checkpoint_dir": "eng2mun/best-checkpoint",
+      "use_lora": false,
+      "use_qlora": false,
+      "use_flash_attention": false,
+      "src_tokenizer": "nllb_default",
+      "tgt_tokenizer": "custom_spm",
+      "tokenizer_extension_dir": "tok_extensions/eng2mun",
+      "spm_vocab_size": 8192,
+      "spm_model_type": "unigram",
+      "test_csv": "/home/scai/msr/aiy257590/scratch/Adivaani/datasets/Mun/test.csv",
+      "max_test_rows_debug": null,
+      "output_dir": "eng2mun/eval",
+      "beam_size": 2,
+      "generation_max_length": 192,
+      "length_penalty": 1.0,
+      "repetition_penalty": 1.1,
+      "no_repeat_ngram_size": 3,
+      "max_source_length": 256,
+      "max_target_length": 256,
+      "eval_batch_size": 16,
+      "num_workers": 4,
+      "persistent_workers": true,
+      "prefetch_factor": 2
+    }
+  ]
+}
