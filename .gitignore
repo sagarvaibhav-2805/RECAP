@@ -1,9 +1,7 @@
 Models/
 datasets
-mt5_small-diff-directions/directions
-NLLB-1.3B-diff-directions/directions
-nllb_diff_hind_dirs/directions
-nllb-200-diff-dirs/directions
+#ignore every directions
+**/directions/
 
 # Ignore checkpoints
 checkpoints/
