@@ -1,0 +1,148 @@
+2026-07-20 01:05:16,718 | INFO | [MODEL] Loading offline weights from: /home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/nllb-200-distilled-600M
+2026-07-20 01:05:24,678 | INFO | [MODEL] Successfully loaded offline model from /home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/nllb-200-distilled-600M
+2026-07-20 01:05:25,334 | INFO | [TOKENIZER] 'bhili_Deva' is not a native NLLB language code — registering it as a new special token before training.
+2026-07-20 01:05:29,100 | INFO | [TOKENIZER] Warm-started 'bhili_Deva' embedding (id=256204) from 'hin_Deva' (id=256068)
+2026-07-20 01:05:31,094 | INFO | [TOKENIZER] SRC tokenizer mode=nllb_default — using NLLB vocabulary as-is (no extension)
+2026-07-20 01:05:31,095 | INFO | [TOKENIZER] TGT tokenizer mode=nllb_default — using NLLB vocabulary as-is (no extension)
+2026-07-20 01:16:02,771 | INFO | [nllb-200-distilled-600M] Epoch 1 | Train 5.6442 | Val 5.3783 | Train PPL 282.6501 | Val PPL 216.6439 | Train BLEU 3.6639 | Val BLEU 4.1522 | Train CHRF++ 26.8508 | Val CHRF++ 27.5589 | LR 1.13e-05
+2026-07-20 01:16:04,630 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-2-bleu-4.98
+2026-07-20 01:16:12,147 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-1-bleu-4.15
+2026-07-20 01:16:12,153 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-2
+2026-07-20 01:16:19,587 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-1
+2026-07-20 01:26:46,243 | INFO | [nllb-200-distilled-600M] Epoch 2 | Train 4.9345 | Val 4.1046 | Train PPL 139.0010 | Val PPL 60.6167 | Train BLEU 5.3205 | Val BLEU 4.9824 | Train CHRF++ 30.6687 | Val CHRF++ 28.9839 | LR 2.26e-05
+2026-07-20 01:26:47,094 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-3-bleu-5.80
+2026-07-20 01:26:54,462 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-2-bleu-4.98
+2026-07-20 01:26:54,470 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-3
+2026-07-20 01:27:01,771 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-2
+2026-07-20 01:37:43,032 | INFO | [nllb-200-distilled-600M] Epoch 3 | Train 3.9063 | Val 3.4444 | Train PPL 49.7133 | Val PPL 31.3260 | Train BLEU 4.5201 | Val BLEU 5.8569 | Train CHRF++ 30.4085 | Val CHRF++ 30.2978 | LR 3.00e-05
+2026-07-20 01:37:43,874 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-4-bleu-6.50
+2026-07-20 01:37:51,334 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-3-bleu-5.86
+2026-07-20 01:37:51,341 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-4
+2026-07-20 01:37:58,652 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-3
+2026-07-20 01:48:49,350 | INFO | [nllb-200-distilled-600M] Epoch 4 | Train 3.5354 | Val 3.2653 | Train PPL 34.3102 | Val PPL 26.1877 | Train BLEU 7.8140 | Val BLEU 6.9466 | Train CHRF++ 31.9579 | Val CHRF++ 31.9795 | LR 2.99e-05
+2026-07-20 01:48:50,189 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-5-bleu-6.86
+2026-07-20 01:48:57,439 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-4-bleu-6.95
+2026-07-20 01:48:57,445 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-5
+2026-07-20 01:49:04,762 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-4
+2026-07-20 01:59:47,134 | INFO | [nllb-200-distilled-600M] Epoch 5 | Train 3.4396 | Val 3.2163 | Train PPL 31.1742 | Val PPL 24.9361 | Train BLEU 7.0069 | Val BLEU 7.2748 | Train CHRF++ 33.6019 | Val CHRF++ 32.4758 | LR 2.98e-05
+2026-07-20 01:59:49,286 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-4-bleu-6.95
+2026-07-20 01:59:56,571 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-5-bleu-7.27
+2026-07-20 01:59:57,900 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-4
+2026-07-20 02:00:05,248 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-5
+2026-07-20 02:10:48,394 | INFO | [nllb-200-distilled-600M] Epoch 6 | Train 3.4094 | Val 3.1968 | Train PPL 30.2457 | Val PPL 24.4546 | Train BLEU 5.7347 | Val BLEU 7.3523 | Train CHRF++ 31.4094 | Val CHRF++ 32.5932 | LR 2.96e-05
+2026-07-20 02:10:49,305 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-6-bleu-6.94
+2026-07-20 02:10:56,793 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-6-bleu-7.35
+2026-07-20 02:10:56,800 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-6
+2026-07-20 02:11:04,124 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-6
+2026-07-20 02:22:05,008 | INFO | [nllb-200-distilled-600M] Epoch 7 | Train 3.3971 | Val 3.1878 | Train PPL 29.8786 | Val PPL 24.2356 | Train BLEU 8.0229 | Val BLEU 7.3904 | Train CHRF++ 33.2581 | Val CHRF++ 32.6838 | LR 2.94e-05
+2026-07-20 02:22:06,591 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-7-bleu-7.11
+2026-07-20 02:22:14,022 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-7-bleu-7.39
+2026-07-20 02:22:14,029 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-7
+2026-07-20 02:22:21,285 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-7
+2026-07-20 02:33:17,950 | INFO | [nllb-200-distilled-600M] Epoch 8 | Train 3.3901 | Val 3.1822 | Train PPL 29.6674 | Val PPL 24.1004 | Train BLEU 6.9237 | Val BLEU 7.3852 | Train CHRF++ 31.8751 | Val CHRF++ 32.6666 | LR 2.91e-05
+2026-07-20 02:33:18,774 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-8-bleu-7.10
+2026-07-20 02:33:26,161 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-8-bleu-7.39
+2026-07-20 02:33:26,168 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-8
+2026-07-20 02:33:33,360 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-8
+2026-07-20 02:44:28,675 | INFO | [nllb-200-distilled-600M] Epoch 9 | Train 3.3859 | Val 3.1786 | Train PPL 29.5460 | Val PPL 24.0134 | Train BLEU 8.4401 | Val BLEU 7.4193 | Train CHRF++ 34.8879 | Val CHRF++ 32.6678 | LR 2.87e-05
+2026-07-20 02:44:29,512 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-9-bleu-7.16
+2026-07-20 02:44:36,663 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-9-bleu-7.42
+2026-07-20 02:44:36,669 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-9
+2026-07-20 02:44:43,788 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-9
+2026-07-20 02:55:31,622 | INFO | [nllb-200-distilled-600M] Epoch 10 | Train 3.3835 | Val 3.1764 | Train PPL 29.4733 | Val PPL 23.9600 | Train BLEU 7.8411 | Val BLEU 7.3786 | Train CHRF++ 33.6796 | Val CHRF++ 32.6428 | LR 2.83e-05
+2026-07-20 02:55:33,767 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-9-bleu-7.42
+2026-07-20 02:55:40,846 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-10-bleu-7.38
+2026-07-20 02:55:42,247 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-9
+2026-07-20 02:55:49,437 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-10
+2026-07-20 03:06:47,058 | INFO | [nllb-200-distilled-600M] Epoch 11 | Train 3.3817 | Val 3.1752 | Train PPL 29.4195 | Val PPL 23.9305 | Train BLEU 7.8056 | Val BLEU 7.4258 | Train CHRF++ 31.8016 | Val CHRF++ 32.6619 | LR 2.78e-05
+2026-07-20 03:06:47,844 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-10-bleu-7.07
+2026-07-20 03:06:55,107 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-11-bleu-7.43
+2026-07-20 03:06:55,114 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-10
+2026-07-20 03:07:02,367 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-11
+2026-07-20 03:18:00,126 | INFO | [nllb-200-distilled-600M] Epoch 12 | Train 3.3803 | Val 3.1741 | Train PPL 29.3782 | Val PPL 23.9048 | Train BLEU 5.2859 | Val BLEU 7.4426 | Train CHRF++ 28.6869 | Val CHRF++ 32.6849 | LR 2.72e-05
+2026-07-20 03:18:02,259 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-11-bleu-7.13
+2026-07-20 03:18:10,092 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-12-bleu-7.44
+2026-07-20 03:18:10,098 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-11
+2026-07-20 03:18:17,404 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-12
+2026-07-20 03:29:19,158 | INFO | [nllb-200-distilled-600M] Epoch 13 | Train 3.3800 | Val 3.1732 | Train PPL 29.3712 | Val PPL 23.8839 | Train BLEU 6.2944 | Val BLEU 7.4646 | Train CHRF++ 31.5056 | Val CHRF++ 32.7374 | LR 2.66e-05
+2026-07-20 03:29:20,468 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-12-bleu-7.15
+2026-07-20 03:29:27,962 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-13-bleu-7.46
+2026-07-20 03:29:27,968 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-12
+2026-07-20 03:29:35,282 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-13
+2026-07-20 03:40:22,303 | INFO | [nllb-200-distilled-600M] Epoch 14 | Train 3.3792 | Val 3.1725 | Train PPL 29.3476 | Val PPL 23.8682 | Train BLEU 7.6907 | Val BLEU 7.4142 | Train CHRF++ 32.6184 | Val CHRF++ 32.6773 | LR 2.60e-05
+2026-07-20 03:40:24,246 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-13-bleu-7.46
+2026-07-20 03:40:31,583 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-14-bleu-7.41
+2026-07-20 03:40:32,646 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-13
+2026-07-20 03:40:39,903 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-14
+2026-07-20 03:51:38,294 | INFO | [nllb-200-distilled-600M] Epoch 15 | Train 3.3789 | Val 3.1723 | Train PPL 29.3376 | Val PPL 23.8616 | Train BLEU 8.5108 | Val BLEU 7.4159 | Train CHRF++ 33.1728 | Val CHRF++ 32.7059 | LR 2.53e-05
+2026-07-20 03:51:39,102 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-13-bleu-7.18
+2026-07-20 03:51:46,173 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-15-bleu-7.42
+2026-07-20 03:51:46,179 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-13
+2026-07-20 03:51:53,406 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-15
+2026-07-20 04:02:41,325 | INFO | [nllb-200-distilled-600M] Epoch 16 | Train 3.3784 | Val 3.1721 | Train PPL 29.3238 | Val PPL 23.8576 | Train BLEU 7.3551 | Val BLEU 7.4770 | Train CHRF++ 31.9229 | Val CHRF++ 32.7470 | LR 2.45e-05
+2026-07-20 04:02:42,154 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-14-bleu-7.15
+2026-07-20 04:02:49,433 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-16-bleu-7.48
+2026-07-20 04:02:49,454 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-14
+2026-07-20 04:02:56,681 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-16
+2026-07-20 04:13:51,902 | INFO | [nllb-200-distilled-600M] Epoch 17 | Train 3.3785 | Val 3.1719 | Train PPL 29.3275 | Val PPL 23.8528 | Train BLEU 9.3141 | Val BLEU 7.4560 | Train CHRF++ 33.6116 | Val CHRF++ 32.7407 | LR 2.37e-05
+2026-07-20 04:13:52,738 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-15-bleu-7.19
+2026-07-20 04:14:00,036 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-17-bleu-7.46
+2026-07-20 04:14:00,043 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-15
+2026-07-20 04:14:07,217 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-17
+2026-07-20 04:24:55,522 | INFO | [nllb-200-distilled-600M] Epoch 18 | Train 3.3781 | Val 3.1718 | Train PPL 29.3158 | Val PPL 23.8503 | Train BLEU 8.8724 | Val BLEU 7.4822 | Train CHRF++ 33.4815 | Val CHRF++ 32.7379 | LR 2.29e-05
+2026-07-20 04:24:57,006 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-16-bleu-7.20
+2026-07-20 04:25:04,707 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-18-bleu-7.48
+2026-07-20 04:25:04,713 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-16
+2026-07-20 04:25:12,143 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-18
+2026-07-20 04:36:02,911 | INFO | [nllb-200-distilled-600M] Epoch 19 | Train 3.3782 | Val 3.1717 | Train PPL 29.3172 | Val PPL 23.8486 | Train BLEU 8.4980 | Val BLEU 7.5001 | Train CHRF++ 32.6866 | Val CHRF++ 32.7700 | LR 2.20e-05
+2026-07-20 04:36:05,966 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-18-bleu-7.48
+2026-07-20 04:36:13,499 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-19-bleu-7.50
+2026-07-20 04:36:14,489 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-18
+2026-07-20 04:36:21,760 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-19
+2026-07-20 04:47:12,897 | INFO | [nllb-200-distilled-600M] Epoch 20 | Train 3.3778 | Val 3.1717 | Train PPL 29.3048 | Val PPL 23.8482 | Train BLEU 7.4061 | Val BLEU 7.4541 | Train CHRF++ 33.9343 | Val CHRF++ 32.7380 | LR 2.11e-05
+2026-07-20 04:47:13,740 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-17-bleu-7.17
+2026-07-20 04:47:21,098 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-20-bleu-7.45
+2026-07-20 04:47:21,105 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-17
+2026-07-20 04:47:28,299 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-20
+2026-07-20 04:58:23,011 | INFO | [nllb-200-distilled-600M] Epoch 21 | Train 3.3780 | Val 3.1717 | Train PPL 29.3130 | Val PPL 23.8484 | Train BLEU 10.8340 | Val BLEU 7.4705 | Train CHRF++ 37.0114 | Val CHRF++ 32.7097 | LR 2.02e-05
+2026-07-20 04:58:23,840 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-18
+2026-07-20 04:58:30,926 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-21
+2026-07-20 05:09:22,830 | INFO | [nllb-200-distilled-600M] Epoch 22 | Train 3.3779 | Val 3.1717 | Train PPL 29.3082 | Val PPL 23.8477 | Train BLEU 8.0502 | Val BLEU 7.4671 | Train CHRF++ 33.3106 | Val CHRF++ 32.7383 | LR 1.93e-05
+2026-07-20 05:09:23,609 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-19-bleu-7.26
+2026-07-20 05:09:30,913 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-22-bleu-7.47
+2026-07-20 05:09:30,919 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-19
+2026-07-20 05:09:38,057 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-22
+2026-07-20 05:20:23,899 | INFO | [nllb-200-distilled-600M] Epoch 23 | Train 3.3778 | Val 3.1717 | Train PPL 29.3060 | Val PPL 23.8472 | Train BLEU 8.1625 | Val BLEU 7.4372 | Train CHRF++ 33.4715 | Val CHRF++ 32.7090 | LR 1.83e-05
+2026-07-20 05:20:25,798 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-22-bleu-7.47
+2026-07-20 05:20:33,013 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-23-bleu-7.44
+2026-07-20 05:20:34,370 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-22
+2026-07-20 05:20:41,547 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-23
+2026-07-20 05:31:32,582 | INFO | [nllb-200-distilled-600M] Epoch 24 | Train 3.3781 | Val 3.1716 | Train PPL 29.3157 | Val PPL 23.8462 | Train BLEU 7.0153 | Val BLEU 7.4244 | Train CHRF++ 32.4198 | Val CHRF++ 32.7191 | LR 1.74e-05
+2026-07-20 05:31:34,733 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-23-bleu-7.44
+2026-07-20 05:31:42,152 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-24-bleu-7.42
+2026-07-20 05:31:42,158 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-20
+2026-07-20 05:31:49,409 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-24
+2026-07-20 05:42:42,710 | INFO | [nllb-200-distilled-600M] Epoch 25 | Train 3.3783 | Val 3.1715 | Train PPL 29.3201 | Val PPL 23.8440 | Train BLEU 6.6250 | Val BLEU 7.4593 | Train CHRF++ 33.1152 | Val CHRF++ 32.7239 | LR 1.64e-05
+2026-07-20 05:42:44,296 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-21-bleu-7.14
+2026-07-20 05:42:51,411 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-25-bleu-7.46
+2026-07-20 05:42:51,417 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-21
+2026-07-20 05:42:58,570 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-25
+2026-07-20 05:53:57,174 | INFO | [nllb-200-distilled-600M] Epoch 26 | Train 3.3781 | Val 3.1717 | Train PPL 29.3164 | Val PPL 23.8479 | Train BLEU 6.9592 | Val BLEU 7.4370 | Train CHRF++ 31.2342 | Val CHRF++ 32.7135 | LR 1.54e-05
+2026-07-20 05:53:57,963 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-22
+2026-07-20 05:54:05,437 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-26
+2026-07-20 06:04:57,388 | INFO | [nllb-200-distilled-600M] Epoch 27 | Train 3.3782 | Val 3.1716 | Train PPL 29.3174 | Val PPL 23.8455 | Train BLEU 6.0352 | Val BLEU 7.4718 | Train CHRF++ 30.0492 | Val CHRF++ 32.7458 | LR 1.44e-05
+2026-07-20 06:05:05,665 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-27
+2026-07-20 06:15:53,992 | INFO | [nllb-200-distilled-600M] Epoch 28 | Train 3.3777 | Val 3.1715 | Train PPL 29.3031 | Val PPL 23.8433 | Train BLEU 8.7031 | Val BLEU 7.4587 | Train CHRF++ 33.8357 | Val CHRF++ 32.7301 | LR 1.34e-05
+2026-07-20 06:15:54,781 | INFO | [CHECKPOINT] Removed old best → directions/hin2bhi/checkpoint-epoch-22-bleu-7.14
+2026-07-20 06:16:02,108 | INFO | [CHECKPOINT] New best saved → directions/hin2bhi/checkpoint-epoch-28-bleu-7.46
+2026-07-20 06:16:03,514 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-27
+2026-07-20 06:16:10,863 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-28
+2026-07-20 06:26:57,807 | INFO | [nllb-200-distilled-600M] Epoch 29 | Train 3.3777 | Val 3.1715 | Train PPL 29.3019 | Val PPL 23.8439 | Train BLEU 7.4365 | Val BLEU 7.4588 | Train CHRF++ 32.4486 | Val CHRF++ 32.7516 | LR 1.24e-05
+2026-07-20 06:26:58,621 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-24
+2026-07-20 06:27:05,944 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-29
+2026-07-20 06:38:02,532 | INFO | [nllb-200-distilled-600M] Epoch 30 | Train 3.3776 | Val 3.1715 | Train PPL 29.3002 | Val PPL 23.8443 | Train BLEU 6.0856 | Val BLEU 7.4250 | Train CHRF++ 32.3210 | Val CHRF++ 32.7196 | LR 1.14e-05
+2026-07-20 06:38:03,668 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-25
+2026-07-20 06:38:11,325 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-30
+2026-07-20 06:49:00,323 | INFO | [nllb-200-distilled-600M] Epoch 31 | Train 3.3777 | Val 3.1716 | Train PPL 29.3022 | Val PPL 23.8463 | Train BLEU 7.3254 | Val BLEU 7.4388 | Train CHRF++ 33.2276 | Val CHRF++ 32.7261 | LR 1.05e-05
+2026-07-20 06:49:01,627 | INFO | [CHECKPOINT] Removed old latest → directions/hin2bhi/checkpoint-latest-epoch-26
+2026-07-20 06:49:09,050 | INFO | [CHECKPOINT] Latest saved → directions/hin2bhi/checkpoint-latest-epoch-31

@@ -1,0 +1,9 @@
+2026-07-22 00:27:38,710 | INFO | [MODEL] Loading offline weights from: /home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/nllb-200-distilled-600M
+2026-07-22 00:27:47,931 | INFO | [MODEL] Successfully loaded offline model from /home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/nllb-200-distilled-600M
+2026-07-22 00:27:49,209 | INFO | [TOKENIZER] 'mundari_Deva' is not a native NLLB language code — registering it as a new special token before training.
+2026-07-22 00:27:56,422 | INFO | [TOKENIZER] Warm-started 'mundari_Deva' embedding (id=256204) from 'hin_Deva' (id=256068)
+2026-07-22 00:28:00,248 | INFO | [TOKENIZER] SRC tokenizer mode=nllb_default — using NLLB vocabulary as-is (no extension)
+2026-07-22 00:28:00,248 | INFO | [TOKENIZER] TGT tokenizer mode=nllb_default — using NLLB vocabulary as-is (no extension)
+2026-07-22 01:04:18,279 | INFO | [nllb-200-distilled-600M] Epoch 1 | Train 5.9090 | Val 4.9299 | Train PPL 368.3430 | Val PPL 138.3653 | Train BLEU 2.2332 | Val BLEU 2.2288 | Train CHRF++ 18.4898 | Val CHRF++ 17.5923 | LR 2.15e-05
+2026-07-22 01:04:36,114 | INFO | [CHECKPOINT] New best saved → directions/eng2mun/checkpoint-epoch-1-bleu-2.23
+2026-07-22 01:04:50,838 | INFO | [CHECKPOINT] Latest saved → directions/eng2mun/checkpoint-latest-epoch-1

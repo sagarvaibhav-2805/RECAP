@@ -1,0 +1,95 @@
+# NLLB-200 Multilingual Framework: Engineering Documentation
+This guide serves as the master reference for training, evaluating, and deploying translation models for tribal languages.
+
+---
+
+## 1. PROJECT ARCHITECTURE
+The framework operates on a **dynamic path system**. By setting `direction_name`, the following are automatically resolved:
+- **Checkpoints**: `outputs/<direction_name>/`
+- **Tokenizer Extensions**: `tok_extensions/<direction_name>/`
+- **Logs**: `outputs/<direction_name>/train.log`
+
+---
+
+## 2. TOKENIZER MODES & PERSISTENCE
+The system provides three ways to handle vocabulary extension:
+
+### Modes:
+- **`nllb_default`**: Bypasses extension. Best for languages already in NLLB (English, Hindi, etc.).
+- **`custom_spm`**: Forces a fresh SentencePiece training. Essential for Santali (Ol Chiki) or specialized scripts.
+- **`auto`**: Computes the Unknown (UNK) token ratio. Triggers extension only if UNK tokens exceed `tokenizer_extension_threshold`. Best for Bhili, Gondi, and Mundari.
+
+### Smart Persistence Logic:
+- **Resume Mode (`resume_from_checkpoint: true`)**: The script reuses the existing `.model` file found in `tok_extensions/`. This saves significant time and disk I/O.
+- **Scratch Mode (`resume_from_checkpoint: false`)**: The script **forces** a full re-train of the tokenizer, ensuring the vocabulary matches your latest dataset.
+
+---
+
+## 3. LORA & QLORA (Low-Rank Adaptation)
+For memory-efficient training on limited GPUs or with large 3.3B models.
+
+- **`use_lora`**: Adds lightweight adapter layers while freezing the base model.
+- **`use_qlora`**: 4-bit quantization of the base model. Recommended for 3.3B models on 12-24GB GPUs.
+- **`lora_r` (Rank)**: Controls the capacity of adapters. Start with `16`. Increase to `32` for complex scripts like Ol Chiki.
+- **`lora_alpha`**: Scaling factor. Always set to `2 × lora_r`.
+- **`lora_target_modules`**: Must be `["q_proj", "k_proj", "v_proj", "out_proj"]` for NLLB.
+
+---
+
+## 4. HYPERPARAMETER REFERENCE
+### Training & Convergence
+- **`learning_rate`**: 
+  - Full Fine-tune: `2e-5` to `5e-5` (Conservative to prevent catastrophic forgetting).
+  - LoRA/QLoRA: `1e-4` to `3e-4` (Adapters require higher LR to stabilize).
+- **`warmup_steps`**: Set to 5-10% of total steps. Recommended: `500-1000`.
+- **`weight_decay`**: Default `0.01`. Prevents overfitting on smaller tribal datasets.
+- **`patience`**: Early stopping window. Set to `3` to avoid wasting compute once loss plateaus.
+
+### Generation (Inference/Eval)
+- **`beam_size`**: Standard is `5`. Use `1` (Greedy) only for fast prototyping.
+- **`repetition_penalty`**: `1.1`. Prevents the model from looping phrases.
+- **`no_repeat_ngram_size`**: `3`. Ensures the output remains fluent and diverse.
+- **`length_penalty`**: `1.0`. Neutral. Set to `1.2` if translations are consistently too short.
+
+---
+
+## 5. TRIBAL LANGUAGE RATIONALE & CASE STUDIES
+
+### **Bhili / Gondi / Mundari (Large Datasets | Devanagari)**
+- **Model Choice**: `3.3B` (Full Fine-tune)
+- **Rationale**: These datasets are large (>100k rows) and use the Devanagari script. The 3.3B model can leverage its massive pre-trained knowledge of Hindi/Marathi to achieve superior quality in these closely related languages.
+- **Tokenizer**: `auto` (UNK ratio is naturally low).
+
+### **Santali (Large Dataset | Ol Chiki Script)**
+- **Model Choice**: `3.3B` (LoRA/Full)
+- **Rationale**: Santali uses the Ol Chiki script, which NLLB does not know. The 3.3B model's "cross-lingual transfer" capacity is needed to map Ol Chiki to NLLB's internal meanings.
+- **Tokenizer**: `custom_spm` (Mandatory). Use `vocab_size: 8192` for better script coverage.
+
+### **Garo (Medium Dataset | Latin Script)**
+- **Model Choice**: `1.3B`
+- **Rationale**: Garo is smaller (~46k rows) and uses Latin script. A smaller 1.3B model often outperforms 3.3B on medium datasets by avoiding overfitting.
+- **Tokenizer**: `custom_spm` (Model: `BPE`).
+
+### **Kui (Small Dataset | Odia/Deva Mixed)**
+- **Model Choice**: `1.3B` or `600M`
+- **Rationale**: Smallest dataset (~26k). Requires high regularization (`weight_decay: 0.015`) and a lower learning rate (`1e-5`) to maintain stability.
+
+---
+
+## 6. DATASET COLUMN REFERENCE (Case-Sensitive)
+All files are located in `../datasets/`.
+
+| File | Columns |
+| :--- | :--- |
+| **Bhi_Hin_Mar_Guj_Odi_Eng.csv** | `English`, `Hindi`, `Bhili`, `Gujarati`, `Marathi`, `Odia` |
+| **Gar_Hin_Ben_Odi_Mar_Guj_Asa_Tel_Kan_Eng.csv** | `English`, `Hindi`, `Garo`, `Gujarati`, `Bengali`, `Odia`, ... |
+| **Gon_Hin_Mar_Guj_Tel_Odi_Ben_Asm_Kan_Eng.csv** | `Hindi`, `English`, `Gondi`, `Gujarati`, `Bengali`, `Odia`, ... |
+| **San_Hin_Odi_Ben_Eng.csv** | `Hindi`, `Santali`, `English`, `odia`, `bengali` (**Note: Lowercase**) |
+
+---
+
+## 7. COMMON PITFALLS & ERRORS
+- **`[FATAL ERROR] Vocabulary size too high`**: This happens if your `spm_vocab_size` is larger than your unique subwords. Reduce it to `2048` or `4096`.
+- **DDP Barrier Hangs**: Ensure you run with `torchrun`. If a crash occurs, check for a process leak using `nvidia-smi`.
+- **OOM (Out of Memory)**: If a model won't fit, do not just lower `batch_size`. You **must** increase `gradient_accumulation_steps` to keep the effective batch at `32` for stable training.
+- **Incorrect Lang Codes**: Using `hin` instead of `hin_Deva` will cause NLLB to use the wrong internal tokenization. Always use the full `code_Script` format.

@@ -1,0 +1,1 @@
+directions/eng2mun/checkpoint-epoch-1-bleu-2.23
