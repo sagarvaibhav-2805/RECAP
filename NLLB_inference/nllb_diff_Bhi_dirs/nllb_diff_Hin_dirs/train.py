@@ -753,20 +753,14 @@ class TranslationDataset(Dataset):
 
             self.tokenizer.tgt_lang = self.tgt_lang
 
-            pieces = self.tokenizer.tokenize(tgt_text)
-            ids = self.tokenizer.convert_tokens_to_ids(pieces)
+            labels_enc = self.tokenizer(
+                tgt_text,
+                truncation=True,
+                max_length=self.max_target_length,
+                padding=False,
+            )
 
-            # truncate
-            ids = ids[: self.max_target_length - 1]
-
-            # append EOS manually
-            ids.append(self.tokenizer.eos_token_id)
-
-            labels = {
-                "input_ids": ids
-            }
-
-            inputs["labels"] = labels["input_ids"]
+            inputs["labels"] = labels_enc["input_ids"]
 
         return inputs
 
