@@ -753,14 +753,18 @@ class TranslationDataset(Dataset):
 
             self.tokenizer.tgt_lang = self.tgt_lang
 
-            labels_enc = self.tokenizer(
-                tgt_text,
-                truncation=True,
-                max_length=self.max_target_length,
-                padding=False,
-            )
+            pieces = self.tokenizer.tokenize(tgt_text)
+            ids = self.tokenizer.convert_tokens_to_ids(pieces)
 
-            inputs["labels"] = labels_enc["input_ids"]
+            tgt_lang_id = self.tokenizer.convert_tokens_to_ids(self.tgt_lang)
+
+            # truncate, reserving room for the leading lang tag + trailing EOS
+            ids = ids[: self.max_target_length - 2]
+
+            # prepend target-language tag, append EOS
+            ids = [tgt_lang_id] + ids + [self.tokenizer.eos_token_id]
+
+            inputs["labels"] = ids
 
         return inputs
 
