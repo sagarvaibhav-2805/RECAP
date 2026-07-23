@@ -1,0 +1,7 @@
+{
+  "language": "bhili",
+  "direction": ["en2tgt", "hi2tgt", "tgt2en", "tgt2hi"],
+  "train_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/train.csv",
+  "val_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/val.csv",
+  "test_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/test.csv"
+}
