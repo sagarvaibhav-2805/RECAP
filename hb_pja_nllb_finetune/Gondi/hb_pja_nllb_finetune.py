@@ -226,7 +226,7 @@ def append_master_scores(language, direction, val_bleu, val_chrf, test_bleu, tes
 # =============================================================
 # 6. MAIN
 # =============================================================
-def run_direction(language, direction, train_csv, val_csv, test_csv):
+def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     assert language in LANGUAGES, \
         f"Unknown language '{language}' in config.json, choices: {list(LANGUAGES.keys())}"
     assert direction in ["en2tgt", "hi2tgt", "tgt2en", "tgt2hi"], \
@@ -293,7 +293,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv):
     # === CUSTOM TRAINING ARGS (kept as you specified) ===
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=10,
+        num_train_epochs=epochs,
         per_device_train_batch_size=32,
         per_device_eval_batch_size=32,
         gradient_accumulation_steps=2,
@@ -331,7 +331,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv):
         compute_metrics=make_compute_metrics(tokenizer),
     )
 
-    print(f"[Train] epochs=5  steps/epoch~{len(tokenized_train)//(16*2)}")
+    print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(16*2)}")
     trainer.train()
 
     trainer.save_model(output_dir)
@@ -418,13 +418,14 @@ def main():
     train_csv  = run_cfg["train_csv"]
     val_csv    = run_cfg["val_csv"]
     test_csv   = run_cfg["test_csv"]
+    epochs     = run_cfg["epochs"]
 
     # "direction" can be a single string or a list of the four directions
     if isinstance(directions, str):
         directions = [directions]
 
     for direction in directions:
-        run_direction(language, direction, train_csv, val_csv, test_csv)
+        run_direction(language, direction, train_csv, val_csv, test_csv, epochs)
 
 
 if __name__ == "__main__":
