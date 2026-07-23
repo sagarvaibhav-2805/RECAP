@@ -54,8 +54,6 @@ import sacrebleu
 MODEL_NAME     = "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/nllb-200-distilled-600M"
 MAX_LENGTH     = 128
 SEED           = 42
-TEST_SIZE      = 0.05
-VAL_SIZE       = 0.05
 
 ENG_CODE = "eng_Latn"
 HIN_CODE = "hin_Deva"
@@ -90,18 +88,9 @@ np.random.seed(SEED)
 
 
 # =============================================================
-# 1. LOAD + CLEAN DATA, BUILD/REUSE SPLITS (per language)
+# 1. LOAD + CLEAN DATA (train/val/test paths given explicitly)
 # =============================================================
-def build_or_load_splits(language: str, csv_file: str, tgt_column: str):
-    split_dir = Path(f"./splits_{language}")
-    train_csv = split_dir / "train.csv"
-    val_csv   = split_dir / "val.csv"
-    test_csv  = split_dir / "test.csv"
-
-    if train_csv.exists() and val_csv.exists() and test_csv.exists():
-        print(f"[Data] Reusing cached splits in {split_dir}")
-        return (pd.read_csv(train_csv), pd.read_csv(val_csv), pd.read_csv(test_csv))
-
+def _load_and_clean(csv_file: str, tgt_column: str) -> pd.DataFrame:
     print(f"[Data] Loading {csv_file} ...")
     df_raw = pd.read_csv(csv_file)
 
@@ -114,21 +103,14 @@ def build_or_load_splits(language: str, csv_file: str, tgt_column: str):
         df[col] = df[col].astype(str).str.strip()
     df = df[(df["English"] != "") & (df["Hindi"] != "") & (df[tgt_column] != "")].reset_index(drop=True)
     print(f"[Data] Usable parallel rows (all 3 langs present): {len(df)}")
+    return df
 
-    ds = Dataset.from_pandas(df, preserve_index=False)
-    split1 = ds.train_test_split(test_size=TEST_SIZE, seed=SEED)
-    test_set = split1["test"]
-    split2 = split1["train"].train_test_split(test_size=VAL_SIZE, seed=SEED)
-    train_set, val_set = split2["train"], split2["test"]
 
-    split_dir.mkdir(parents=True, exist_ok=True)
-    train_df = pd.DataFrame(train_set)
-    val_df   = pd.DataFrame(val_set)
-    test_df  = pd.DataFrame(test_set)
-    train_df.to_csv(train_csv, index=False, encoding="utf-8-sig")
-    val_df.to_csv(val_csv,     index=False, encoding="utf-8-sig")
-    test_df.to_csv(test_csv,   index=False, encoding="utf-8-sig")
-    print(f"[Data] Cached splits to {split_dir} | "
+def load_splits(train_csv: str, val_csv: str, test_csv: str, tgt_column: str):
+    train_df = _load_and_clean(train_csv, tgt_column)
+    val_df   = _load_and_clean(val_csv,   tgt_column)
+    test_df  = _load_and_clean(test_csv,  tgt_column)
+    print(f"[Data] Loaded splits | "
           f"train={len(train_df)} val={len(val_df)} test={len(test_df)}")
     return train_df, val_df, test_df
 
@@ -244,14 +226,13 @@ def append_master_scores(language, direction, val_bleu, val_chrf, test_bleu, tes
 # =============================================================
 # 6. MAIN
 # =============================================================
-def run_direction(language, direction):
+def run_direction(language, direction, train_csv, val_csv, test_csv):
     assert language in LANGUAGES, \
         f"Unknown language '{language}' in config.json, choices: {list(LANGUAGES.keys())}"
     assert direction in ["en2tgt", "hi2tgt", "tgt2en", "tgt2hi"], \
         f"Unknown direction '{direction}' in config.json, choices: en2tgt, hi2tgt, tgt2en, tgt2hi"
 
     cfg       = LANGUAGES[language]
-    csv_file    = cfg["csv_file"]
     tgt_column  = cfg["column"]
     tribal_code = cfg["lang_code"]
 
@@ -271,7 +252,7 @@ def run_direction(language, direction):
     print(f"[Output] {output_dir}")
 
     # ---- Data ----
-    train_df, val_df, test_df = build_or_load_splits(language, csv_file, tgt_column)
+    train_df, val_df, test_df = load_splits(train_csv, val_csv, test_csv, tgt_column)
     train_set = Dataset.from_pandas(train_df, preserve_index=False)
     val_set   = Dataset.from_pandas(val_df,   preserve_index=False)
     test_set  = Dataset.from_pandas(test_df,  preserve_index=False)
@@ -434,13 +415,16 @@ def main():
 
     language   = run_cfg["language"]
     directions = run_cfg["direction"]
+    train_csv  = run_cfg["train_csv"]
+    val_csv    = run_cfg["val_csv"]
+    test_csv   = run_cfg["test_csv"]
 
     # "direction" can be a single string or a list of the four directions
     if isinstance(directions, str):
         directions = [directions]
 
     for direction in directions:
-        run_direction(language, direction)
+        run_direction(language, direction, train_csv, val_csv, test_csv)
 
 
 if __name__ == "__main__":
