@@ -2,6 +2,18 @@ Models/
 datasets
 #ignore every directions
 **/directions/
+nllb-bhili-en2tgt-finetuned/
+nllb-bhili-tgt2en-finetuned/
+nllb-bhili-hin2tgt-finetuned/
+nllb-bhili-gtg2hin-finetuned/
+nllb-gondi-en2tgt-finetuned/
+nllb-gondi-tgt2en-finetuned/
+nllb-gondi-hin2tgt-finetuned/
+nllb-gondi-tgt2hin-finetuned/
+nllb-mundari-en2tgt-finetuned/
+nllb-mundari-tgt2eng-finetuned/
+nllb-mundari-hin2tgt-finetuned/
+nllb-mundari-tgt2hin-finetuned/
 
 # Ignore checkpoints
 checkpoints/
