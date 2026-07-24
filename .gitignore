@@ -1,23 +1,22 @@
 Models/
 datasets
-#ignore every directions
+
+# train.py (nllb_diff_*_dirs) per-direction outputs + tokenizer extensions
 **/directions/
-nllb-bhili-en2tgt-finetuned/
-nllb-bhili-tgt2en-finetuned/
-nllb-bhili-hin2tgt-finetuned/
-nllb-bhili-gtg2hin-finetuned/
-nllb-gondi-en2tgt-finetuned/
-nllb-gondi-tgt2en-finetuned/
-nllb-gondi-hin2tgt-finetuned/
-nllb-gondi-tgt2hin-finetuned/
-nllb-mundari-en2tgt-finetuned/
-nllb-mundari-tgt2eng-finetuned/
-nllb-mundari-hin2tgt-finetuned/
-nllb-mundari-tgt2hin-finetuned/
+**/tok_extensions/
+
+# hb_pja_nllb_finetune.py / mt5_finetune.py per-run outputs, any language/direction
+nllb-*-finetuned/
+mt5-*-finetuned/
+splits_*/
+all_languages_scores.csv
+test_predictions_*.csv
+final_scores_*.txt
 
 # Ignore checkpoints
 checkpoints/
 checkpoint/
+checkpoint-*/
 *.ckpt
 *.bin
 *.pt
