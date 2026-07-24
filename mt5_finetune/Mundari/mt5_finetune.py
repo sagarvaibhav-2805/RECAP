@@ -52,7 +52,7 @@ import sacrebleu
 # =============================================================
 # CONFIG
 # =============================================================
-MODEL_NAME = "/PATH/TO/mt5-base"   # *** UPDATE with the real HPC path ***
+MODEL_NAME = "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/mt5-base"   # *** UPDATE with the real HPC path ***
 MAX_LENGTH = 128
 SEED       = 42
 
