@@ -1,0 +1,38 @@
+[
+  {
+    "name": "gondi_en2tgt",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "checkpoint_path": "./nllb-gondi-en2tgt-finetuned",
+    "src_col": "English",
+    "tgt_col": "Gondi",
+    "src_lang": "eng_Latn",
+    "tgt_lang": "gon_Deva"
+  },
+  {
+    "name": "gondi_hi2tgt",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "checkpoint_path": "./nllb-gondi-hi2tgt-finetuned",
+    "src_col": "Hindi",
+    "tgt_col": "Gondi",
+    "src_lang": "hin_Deva",
+    "tgt_lang": "gon_Deva"
+  },
+  {
+    "name": "gondi_tgt2en",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "checkpoint_path": "./nllb-gondi-tgt2en-finetuned",
+    "src_col": "Gondi",
+    "tgt_col": "English",
+    "src_lang": "gon_Deva",
+    "tgt_lang": "eng_Latn"
+  },
+  {
+    "name": "gondi_tgt2hi",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "checkpoint_path": "./nllb-gondi-tgt2hi-finetuned",
+    "src_col": "Gondi",
+    "tgt_col": "Hindi",
+    "src_lang": "gon_Deva",
+    "tgt_lang": "hin_Deva"
+  }
+]

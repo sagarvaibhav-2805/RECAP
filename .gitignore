@@ -15,6 +15,10 @@ all_languages_scores.csv
 test_predictions_*.csv
 final_scores_*.txt
 
+# infer.py outputs (NLLB-finetune / mt5_finetune / qwen_finetune)
+infer_scores.csv
+infer_predictions_*.csv
+
 hb_pja_nllb_finetune/Bhili/all_languages_scores.csv
 hb_pja_nllb_finetune/Bhili/final_scores_bhili_en2tgt.txt
 hb_pja_nllb_finetune/Bhili/final_scores_bhili_hi2tgt.txt
