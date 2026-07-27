@@ -1,4 +1,0 @@
-2026-07-20 11:03:22,420 | WARNING | [MODEL] Offline load failed! Reason: Offline directory not found or unavailable: /home/user/final-climb-adivaani/Seq2Seq-based-Models/nllb-600m
-2026-07-20 11:03:22,421 | INFO | [MODEL] Falling back to online download: facebook/nllb-200-1.3B
-2026-07-20 12:32:24,094 | WARNING | [MODEL] Offline load failed! Reason: Offline directory not found or unavailable: /home/user/final-climb-adivaani/Seq2Seq-based-Models/nllb-600m
-2026-07-20 12:32:24,096 | INFO | [MODEL] Falling back to online download: facebook/nllb-200-1.3B

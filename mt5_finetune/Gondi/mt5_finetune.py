@@ -264,9 +264,9 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
         num_train_epochs=epochs,
-        per_device_train_batch_size=32,
-        per_device_eval_batch_size=32,
-        gradient_accumulation_steps=2,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=16,
+        gradient_accumulation_steps=4,
         optim="adafactor",
         learning_rate=1e-3,
         lr_scheduler_type="constant_with_warmup",

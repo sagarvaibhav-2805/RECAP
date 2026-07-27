@@ -1,1 +1,0 @@
-directions/eng2bhi/checkpoint-epoch-24-bleu-1.14
