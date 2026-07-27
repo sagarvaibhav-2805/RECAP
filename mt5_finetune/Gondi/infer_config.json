@@ -1,7 +1,7 @@
 [
   {
     "name": "gondi_en2tgt",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/gondi.csv",
     "checkpoint_path": "./mt5-gondi-en2tgt-finetuned",
     "src_col": "English",
     "tgt_col": "Gondi",
@@ -10,7 +10,7 @@
   },
   {
     "name": "gondi_hi2tgt",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/gondi.csv",
     "checkpoint_path": "./mt5-gondi-hi2tgt-finetuned",
     "src_col": "Hindi",
     "tgt_col": "Gondi",
@@ -19,7 +19,7 @@
   },
   {
     "name": "gondi_tgt2en",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/gondi.csv",
     "checkpoint_path": "./mt5-gondi-tgt2en-finetuned",
     "src_col": "Gondi",
     "tgt_col": "English",
@@ -28,7 +28,7 @@
   },
   {
     "name": "gondi_tgt2hi",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/gondi.csv",
     "checkpoint_path": "./mt5-gondi-tgt2hi-finetuned",
     "src_col": "Gondi",
     "tgt_col": "Hindi",

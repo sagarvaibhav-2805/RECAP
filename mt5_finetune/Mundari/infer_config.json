@@ -1,7 +1,7 @@
 [
   {
     "name": "mundari_en2tgt",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/mundari.csv",
     "checkpoint_path": "./mt5-mundari-en2tgt-finetuned",
     "src_col": "English",
     "tgt_col": "Mundari",
@@ -10,7 +10,7 @@
   },
   {
     "name": "mundari_hi2tgt",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/mundari.csv",
     "checkpoint_path": "./mt5-mundari-hi2tgt-finetuned",
     "src_col": "Hindi",
     "tgt_col": "Mundari",
@@ -19,7 +19,7 @@
   },
   {
     "name": "mundari_tgt2en",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/mundari.csv",
     "checkpoint_path": "./mt5-mundari-tgt2en-finetuned",
     "src_col": "Mundari",
     "tgt_col": "English",
@@ -28,7 +28,7 @@
   },
   {
     "name": "mundari_tgt2hi",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/mundari.csv",
     "checkpoint_path": "./mt5-mundari-tgt2hi-finetuned",
     "src_col": "Mundari",
     "tgt_col": "Hindi",

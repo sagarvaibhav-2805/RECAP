@@ -1,7 +1,7 @@
 [
   {
     "name": "bhili_en2tgt",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/bhili.csv",
     "checkpoint_path": "./mt5-bhili-en2tgt-finetuned",
     "src_col": "English",
     "tgt_col": "Bhili",
@@ -10,7 +10,7 @@
   },
   {
     "name": "bhili_hi2tgt",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/bhili.csv",
     "checkpoint_path": "./mt5-bhili-hi2tgt-finetuned",
     "src_col": "Hindi",
     "tgt_col": "Bhili",
@@ -19,7 +19,7 @@
   },
   {
     "name": "bhili_tgt2en",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/bhili.csv",
     "checkpoint_path": "./mt5-bhili-tgt2en-finetuned",
     "src_col": "Bhili",
     "tgt_col": "English",
@@ -28,7 +28,7 @@
   },
   {
     "name": "bhili_tgt2hi",
-    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/test.csv",
+    "csv_path": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/inference_data/bhili.csv",
     "checkpoint_path": "./mt5-bhili-tgt2hi-finetuned",
     "src_col": "Bhili",
     "tgt_col": "Hindi",
