@@ -29,6 +29,11 @@ to label output files/rows. If "tgt_col" is present in the CSV, BLEU/chrF++
 are computed against it as the reference; if not, the job runs pure
 inference (predictions only, no scores).
 
+If more than one GPU is visible, jobs run in parallel -- one job per GPU,
+round-robin if there are more jobs than GPUs (e.g. 4 direction-jobs on a
+4-GPU node all run at once instead of sequentially). With a single GPU (or
+CPU), jobs run sequentially, same as before.
+
 Run:
     python infer.py
 """
@@ -36,6 +41,7 @@ Run:
 import os
 import json
 import csv
+import multiprocessing as mp
 from pathlib import Path
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -61,21 +67,32 @@ NUM_BEAMS  = 5
 SCORES_CSV = Path("./infer_scores.csv")
 
 
-def append_scores(job_name, n_rows, bleu, chrfpp):
+def append_scores(job_name, n_rows, bleu, chrfpp, lock=None):
     header = ["job", "rows", "bleu", "chrf++"]
     row = [job_name, n_rows,
            f"{bleu:.4f}" if bleu is not None else "",
            f"{chrfpp:.4f}" if chrfpp is not None else ""]
-    is_new = not SCORES_CSV.exists()
-    with open(SCORES_CSV, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if is_new:
-            w.writerow(header)
-        w.writerow(row)
+
+    def _write():
+        is_new = not SCORES_CSV.exists()
+        with open(SCORES_CSV, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if is_new:
+                w.writerow(header)
+            w.writerow(row)
+
+    # Guard the shared CSV with a lock when multiple processes may write to
+    # it concurrently (parallel multi-GPU jobs) -- without it, interleaved
+    # writes from separate processes can corrupt/garble rows.
+    if lock is not None:
+        with lock:
+            _write()
+    else:
+        _write()
     print(f"[Scores] Appended '{job_name}' to {SCORES_CSV}")
 
 
-def run_job(job, device):
+def run_job(job, device, lock=None):
     csv_path        = job["csv_path"]
     checkpoint_path = job["checkpoint_path"]
     src_col         = job["src_col"]
@@ -151,7 +168,13 @@ def run_job(job, device):
     else:
         print("[Score] No reference column found -- predictions-only run, no BLEU/chrF++.")
 
-    append_scores(job_name, len(df), bleu, chrfpp)
+    append_scores(job_name, len(df), bleu, chrfpp, lock=lock)
+
+
+def _worker(gpu_id, job, lock):
+    device = torch.device(f"cuda:{gpu_id}")
+    torch.cuda.set_device(device)
+    run_job(job, device, lock=lock)
 
 
 def main():
@@ -159,11 +182,28 @@ def main():
     with open(config_path, "r", encoding="utf-8") as f:
         jobs = json.load(f)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[Device] {device}")
+    n_gpus = torch.cuda.device_count()
+    print(f"[Device] {n_gpus} GPU(s) visible")
 
-    for job in jobs:
-        run_job(job, device)
+    if n_gpus <= 1:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        for job in jobs:
+            run_job(job, device)
+    else:
+        # One process per job, pinned to a GPU round-robin -- all jobs run
+        # concurrently instead of sequentially. "spawn" is required (not the
+        # Linux default "fork") since each worker needs its own clean CUDA
+        # context; forking a process that already touched CUDA is unsafe.
+        ctx = mp.get_context("spawn")
+        lock = ctx.Lock()
+        procs = []
+        for i, job in enumerate(jobs):
+            gpu_id = i % n_gpus
+            p = ctx.Process(target=_worker, args=(gpu_id, job, lock))
+            p.start()
+            procs.append(p)
+        for p in procs:
+            p.join()
 
     print(f"\nAll jobs done. Scores: {SCORES_CSV}")
 
