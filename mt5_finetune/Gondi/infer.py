@@ -60,11 +60,27 @@ print("=" * 60)
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import sacrebleu
 
-MAX_LENGTH = 128
-BATCH_SIZE = 16
-NUM_BEAMS  = 5
+MAX_LENGTH     = 128
+BATCH_SIZE     = 16
+NUM_BEAMS      = 5
+SAVE_EVERY_ROWS = 5000  # flush predictions to disk this often, for resumability
 
 SCORES_CSV = Path("./infer_scores.csv")
+
+
+def _flush_predictions(preds_path, src_col_name, src_list, pred_list, ref_col_name, ref_list):
+    """Append a chunk of rows to preds_path, writing the header only if the
+    file doesn't exist yet. Called periodically during generation (not just
+    once at the end) so progress survives a crash/timeout -- combined with
+    the resume check in run_job(), an interrupted job picks back up here
+    instead of starting over."""
+    out = {src_col_name: src_list, "prediction": pred_list}
+    if ref_list is not None:
+        out[ref_col_name] = ref_list
+    chunk_df = pd.DataFrame(out)
+    file_exists = os.path.exists(preds_path)
+    chunk_df.to_csv(preds_path, mode="a", header=not file_exists,
+                     index=False, encoding="utf-8-sig")
 
 
 def append_scores(job_name, n_rows, bleu, chrfpp, lock=None):
@@ -117,51 +133,87 @@ def run_job(job, device, lock=None):
     has_ref = tgt_col is not None and tgt_col in df.columns
     if has_ref:
         df[tgt_col] = df[tgt_col].astype(str).str.strip()
-    print(f"[Data] rows to translate: {len(df)}  (reference available: {has_ref})")
+    total_rows = len(df)
+    print(f"[Data] rows to translate: {total_rows}  (reference available: {has_ref})")
 
-    print("[Model] Loading tokenizer & model from checkpoint ...")
-    tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
-    model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint_path)
-    model.to(device)
-    model.eval()
-
-    src_texts = df[src_col].tolist()
-    all_preds = []
-    with torch.no_grad():
-        for i in range(0, len(src_texts), BATCH_SIZE):
-            chunk = [prefix + str(t) for t in src_texts[i:i + BATCH_SIZE]]
-            enc = tokenizer(
-                chunk, return_tensors="pt", padding=True,
-                truncation=True, max_length=MAX_LENGTH,
-            ).to(device)
-            out = model.generate(
-                **enc,
-                max_length=MAX_LENGTH,
-                num_beams=NUM_BEAMS,
-            )
-            all_preds.extend(tokenizer.batch_decode(out, skip_special_tokens=True))
-            if (i // BATCH_SIZE) % 20 == 0:
-                print(f"  decoded {i + len(chunk)}/{len(src_texts)}")
-
-    out_cols = {f"source_{src_col.lower()}": src_texts, "prediction": all_preds}
-    if has_ref:
-        out_cols[f"reference_{tgt_col.lower()}"] = df[tgt_col].tolist()
-
+    src_out_col = f"source_{src_col.lower()}"
+    ref_out_col = f"reference_{tgt_col.lower()}" if has_ref else None
     preds_path = f"infer_predictions_{job_name}.csv"
-    pd.DataFrame(out_cols).to_csv(preds_path, index=False, encoding="utf-8-sig")
-    print(f"[Save] Predictions: {preds_path}")
 
+    # ---- Resume check: how much of this job is already done? ----
+    # Assumes csv_path/src_col haven't changed since the last run -- row
+    # order is deterministic (same filter, no shuffling), so "n_done" rows
+    # already in preds_path map 1:1 onto the first n_done rows of df.
+    n_done = 0
+    if os.path.exists(preds_path):
+        n_done = len(pd.read_csv(preds_path))
+        print(f"[Resume] Found existing {preds_path} with {n_done}/{total_rows} rows already done.")
+
+    if n_done >= total_rows:
+        print(f"[Resume] {job_name} already fully done -- skipping generation.")
+    else:
+        if n_done > 0:
+            print(f"[Resume] Continuing from row {n_done}/{total_rows}.")
+
+        print("[Model] Loading tokenizer & model from checkpoint ...")
+        tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
+        model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint_path)
+        model.to(device)
+        model.eval()
+
+        remaining = df.iloc[n_done:].reset_index(drop=True)
+        src_texts = remaining[src_col].tolist()
+        ref_texts = remaining[tgt_col].tolist() if has_ref else None
+
+        buf_src, buf_pred, buf_ref = [], [], ([] if has_ref else None)
+
+        with torch.no_grad():
+            for i in range(0, len(src_texts), BATCH_SIZE):
+                raw_chunk = src_texts[i:i + BATCH_SIZE]
+                chunk = [prefix + str(t) for t in raw_chunk]
+                enc = tokenizer(
+                    chunk, return_tensors="pt", padding=True,
+                    truncation=True, max_length=MAX_LENGTH,
+                ).to(device)
+                out = model.generate(
+                    **enc,
+                    max_length=MAX_LENGTH,
+                    num_beams=NUM_BEAMS,
+                )
+                preds = tokenizer.batch_decode(out, skip_special_tokens=True)
+
+                buf_src.extend(raw_chunk)
+                buf_pred.extend(preds)
+                if has_ref:
+                    buf_ref.extend(ref_texts[i:i + len(raw_chunk)])
+
+                if (i // BATCH_SIZE) % 20 == 0:
+                    print(f"  decoded {n_done + i + len(raw_chunk)}/{total_rows}")
+
+                if len(buf_src) >= SAVE_EVERY_ROWS:
+                    _flush_predictions(preds_path, src_out_col, buf_src, buf_pred, ref_out_col, buf_ref)
+                    buf_src, buf_pred = [], []
+                    buf_ref = [] if has_ref else None
+
+        if buf_src:
+            _flush_predictions(preds_path, src_out_col, buf_src, buf_pred, ref_out_col, buf_ref)
+
+        print(f"[Save] Predictions saved incrementally (every {SAVE_EVERY_ROWS} rows) to {preds_path}")
+
+    # ---- Score against the FULL predictions file (resumed + newly generated) ----
+    full_preds = pd.read_csv(preds_path)
     bleu = chrfpp = None
-    if has_ref:
-        refs = df[tgt_col].tolist()
-        bleu   = sacrebleu.corpus_bleu(all_preds, [refs]).score
-        chrfpp = sacrebleu.corpus_chrf(all_preds, [refs], word_order=2).score
+    if has_ref and ref_out_col in full_preds.columns:
+        preds_list = full_preds["prediction"].astype(str).tolist()
+        refs_list  = full_preds[ref_out_col].astype(str).tolist()
+        bleu   = sacrebleu.corpus_bleu(preds_list, [refs_list]).score
+        chrfpp = sacrebleu.corpus_chrf(preds_list, [refs_list], word_order=2).score
         print(f"BLEU   : {bleu:.4f}")
         print(f"chrF++ : {chrfpp:.4f}")
     else:
         print("[Score] No reference column found -- predictions-only run, no BLEU/chrF++.")
 
-    append_scores(job_name, len(df), bleu, chrfpp, lock=lock)
+    append_scores(job_name, len(full_preds), bleu, chrfpp, lock=lock)
 
 
 def _worker(gpu_id, job, lock):
