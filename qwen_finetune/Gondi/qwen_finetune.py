@@ -66,6 +66,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+from transformers.trainer_utils import get_last_checkpoint
 import sacrebleu
 
 # =============================================================
@@ -390,8 +391,17 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         data_collator=data_collator,
     )
 
+    # Resume from the last checkpoint in output_dir if one exists (e.g. the
+    # job got killed mid-run) -- restores model/optimizer/scheduler state and
+    # the exact step count, rather than silently restarting from scratch.
+    last_checkpoint = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
+    if last_checkpoint is not None:
+        print(f"[Resume] Found checkpoint at {last_checkpoint} -- resuming training from there.")
+    else:
+        print("[Resume] No checkpoint found -- starting training from scratch.")
+
     print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(8*4)}")
-    trainer.train()
+    trainer.train(resume_from_checkpoint=last_checkpoint)
 
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
