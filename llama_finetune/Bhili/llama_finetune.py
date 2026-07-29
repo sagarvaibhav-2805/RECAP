@@ -1,31 +1,51 @@
 """
-Full fine-tune Qwen2.5-0.5B (base) for English/Hindi <-> {tribal language}
-translation via supervised instruction fine-tuning (SFT) on Qwen's ChatML
-template.
+Full fine-tune Llama-3.1-8B (base) for English/Hindi <-> {tribal language}
+translation via supervised instruction fine-tuning (SFT) on Llama-3's chat
+format.
 
-Qwen2.5 is a decoder-only causal LM, not an encoder-decoder seq2seq model like
-NLLB/mT5 -- there is no forced_bos_token_id or task-prefix trick here. Each
-training example is instead formatted as a chat turn:
+Llama-3.1-8B is a decoder-only causal LM, like Qwen2.5 -- there is no
+forced_bos_token_id or task-prefix trick here. Each training example is
+formatted as a chat turn using Llama-3's special tokens:
 
-    <|im_start|>system
-    You are a helpful assistant.<|im_end|>
-    <|im_start|>user
+    <|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+    You are a helpful assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>
+
     Translate the following text from English to Gondi:
-    <source text><|im_end|>
-    <|im_start|>assistant
-    <target text><|im_end|>
+    <source text><|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
-and the loss is computed ONLY on the assistant's response tokens -- the
-system/user (prompt) tokens are masked out with label id -100. This is the
-standard SFT recipe for instruction-following LLMs (the same masking TRL's
-SFTTrainer/DataCollatorForCompletionOnlyLM does internally).
+    <target text><|eot_id|>
+
+IMPORTANT: unlike Qwen2.5's base checkpoint, Llama-3.1-8B's base tokenizer
+does NOT ship a `chat_template` (verified directly against the real
+tokenizer -- `tokenizer.chat_template is None` on the base model). The
+format above is built manually in build_prompt_text()/build_full_text()
+rather than via tokenizer.apply_chat_template(). This was checked against
+the official Llama-3.1-8B-Instruct chat template and produces token-for-token
+identical output for a simple system/user/assistant turn (the Instruct
+template additionally injects a "Cutting Knowledge Date / Today Date" line
+into the system message, which is specific to Meta's own assistant persona
+and irrelevant to this translation task, so it's intentionally omitted here).
+
+Loss is computed ONLY on the assistant's response tokens -- the system/user
+(prompt) tokens are masked out with label id -100. This is the standard SFT
+recipe for instruction-following LLMs (the same masking TRL's
+SFTTrainer/DataCollatorForCompletionOnlyLM does internally), and matches the
+approach used in qwen_finetune.py.
+
+FULL fine-tuning of an 8B model needs ~140GB+ GPU memory for optimizer
+states+gradients+activations even in bf16 -- this will NOT fit on a single
+80GB A100. This script requires DeepSpeed ZeRO stage 2 (ds_config.json,
+same directory) to shard optimizer states + gradients across GPUs, and MUST
+be launched with more than one GPU:
+
+    torchrun --nproc_per_node=4 llama_finetune.py
 
 Checkpoint selection is by eval_loss (perplexity), not a generation metric --
 plain Trainer (unlike Seq2SeqTrainer) doesn't generate during periodic eval,
 and running beam search every eval step during LLM SFT is not standard
 practice. Real BLEU/chrF++ are computed once at the end via actual
-generation on val + test, same as the manual beam-5 pass in the mT5/NLLB
-scripts.
+generation on val + test, same as qwen_finetune.py.
 
 Language, direction(s), data paths, and epochs are read from config.json
 (same directory as this script):
@@ -72,14 +92,20 @@ import sacrebleu
 # =============================================================
 # CONFIG
 # =============================================================
-MODEL_NAME    = "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/Qwen2.5-0.5B"
-MAX_LENGTH    = 256   # full prompt+response token budget (chat template adds overhead)
-MAX_NEW_TOKENS = 128  # generation cap for the response only
-SEED          = 42
-SYSTEM_PROMPT = "You are a helpful assistant."
+MODEL_NAME     = "/PATH/TO/llama-3.1-8b"   # *** UPDATE with the real HPC path ***
+DS_CONFIG      = str(Path(__file__).resolve().parent / "ds_config.json")
+MAX_LENGTH     = 256   # full prompt+response token budget (chat format adds overhead)
+MAX_NEW_TOKENS = 128   # generation cap for the response only
+SEED           = 42
+SYSTEM_PROMPT  = "You are a helpful assistant."
 
 ENG_NAME = "English"
 HIN_NAME = "Hindi"
+
+# Llama-3 special tokens for the chat format (present in the base tokenizer's
+# vocab even though no chat_template is configured for it)
+BOS_TOKEN = "<|begin_of_text|>"
+EOT_TOKEN = "<|eot_id|>"
 
 # Per-language config:
 #   - column: the column name in the CSV for the tribal language (also used
@@ -142,21 +168,26 @@ def load_tokenizer_and_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[Model] Using device: {device}  "
           f"({torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu'})")
-    model.to(device)
     return tokenizer, model, device
 
 
 # =============================================================
 # 3. PROMPT FORMATTING + PREPROCESSING (response-only loss masking)
 # =============================================================
-def build_messages(src_name, tgt_name, src_text, tgt_text=None):
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Translate the following text from {src_name} to {tgt_name}:\n{src_text}"},
-    ]
-    if tgt_text is not None:
-        messages.append({"role": "assistant", "content": str(tgt_text)})
-    return messages
+def _turn(role, content):
+    return f"<|start_header_id|>{role}<|end_header_id|>\n\n{str(content).strip()}{EOT_TOKEN}"
+
+
+def build_prompt_text(src_name, tgt_name, src_text):
+    """System + user turns, plus the assistant header the model should
+    continue from. Everything after this point is the response."""
+    system = _turn("system", SYSTEM_PROMPT)
+    user = _turn("user", f"Translate the following text from {src_name} to {tgt_name}:\n{src_text}")
+    return BOS_TOKEN + system + user + "<|start_header_id|>assistant<|end_header_id|>\n\n"
+
+
+def build_full_text(src_name, tgt_name, src_text, tgt_text):
+    return build_prompt_text(src_name, tgt_name, src_text) + f"{str(tgt_text).strip()}{EOT_TOKEN}"
 
 
 def make_preprocess_fn(tokenizer, src_col, tgt_col, src_name, tgt_name):
@@ -164,17 +195,12 @@ def make_preprocess_fn(tokenizer, src_col, tgt_col, src_name, tgt_name):
         all_input_ids, all_labels, all_attention_mask = [], [], []
 
         for src_text, tgt_text in zip(examples[src_col], examples[tgt_col]):
-            prompt_messages = build_messages(src_name, tgt_name, src_text)
-            full_messages    = build_messages(src_name, tgt_name, src_text, tgt_text)
+            prompt_text = build_prompt_text(src_name, tgt_name, src_text)
+            full_text   = build_full_text(src_name, tgt_name, src_text, tgt_text)
 
-            # add_generation_prompt=True renders exactly the text the
-            # assistant's turn continues from, so prompt_text is guaranteed
-            # to be a string (and therefore token) prefix of full_text.
-            prompt_text = tokenizer.apply_chat_template(
-                prompt_messages, tokenize=False, add_generation_prompt=True)
-            full_text = tokenizer.apply_chat_template(
-                full_messages, tokenize=False, add_generation_prompt=False)
-
+            # prompt_text is a string (and therefore token) prefix of
+            # full_text by construction -- verified directly against the
+            # tokenizer before shipping this script.
             prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
             full_ids   = tokenizer(full_text,   add_special_tokens=False)["input_ids"]
 
@@ -231,8 +257,8 @@ def generate_and_score(records, src_col, tgt_col, src_name, tgt_name,
     model.eval()
     tokenizer.padding_side = "left"  # required for correct batched causal-LM generation
 
-    im_end_id = tokenizer.convert_tokens_to_ids("<|im_end|>")
-    eos_ids = [tokenizer.eos_token_id, im_end_id]
+    eot_id = tokenizer.convert_tokens_to_ids(EOT_TOKEN)
+    eos_ids = [tokenizer.eos_token_id, eot_id]
 
     src_texts = [r[src_col] for r in records]
     ref_texts = [str(r[tgt_col]) for r in records]
@@ -241,12 +267,7 @@ def generate_and_score(records, src_col, tgt_col, src_name, tgt_name,
     with torch.no_grad():
         for i in range(0, len(src_texts), batch_size):
             chunk = src_texts[i:i + batch_size]
-            prompts = [
-                tokenizer.apply_chat_template(
-                    build_messages(src_name, tgt_name, t),
-                    tokenize=False, add_generation_prompt=True)
-                for t in chunk
-            ]
+            prompts = [build_prompt_text(src_name, tgt_name, t) for t in chunk]
             enc = tokenizer(
                 prompts, return_tensors="pt", padding=True,
                 truncation=True, max_length=MAX_LENGTH,
@@ -318,7 +339,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     elif direction == "tgt2hi":
         src_col, tgt_col, src_name, tgt_name = tgt_column, "Hindi", tgt_column, HIN_NAME
 
-    output_dir = f"./qwen-{language}-{direction}-finetuned"
+    output_dir = f"./llama-{language}-{direction}-finetuned"
     print(f"\n========== Language: {language} | Direction: {direction} ==========")
     print(f"  {src_col} -> {tgt_col}")
     print(f"[Output] {output_dir}")
@@ -348,19 +369,16 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     # ---- Trainer ----
     data_collator = CausalLMPaddingCollator(pad_token_id=tokenizer.pad_token_id)
 
-    use_bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-    print(f"[Train] bf16={use_bf16}")
-
-    # === TRAINING ARGS (standard full-parameter LLM SFT recipe: AdamW,
-    #     small LR, short warmup, few epochs -- unlike the MT encoder-decoder
-    #     models, LLM SFT typically uses far fewer epochs since the model
-    #     already has strong pretrained priors and overfits fast) ===
+    # === TRAINING ARGS: full-parameter LLM SFT recipe (AdamW, small LR,
+    #     short warmup, few epochs), plus DeepSpeed ZeRO-2 -- REQUIRED for
+    #     full fine-tuning at 8B scale, since optimizer states + gradients +
+    #     activations do not fit on a single GPU even in bf16. ===
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=epochs,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        gradient_accumulation_steps=8,
         learning_rate=2e-5,
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
@@ -372,7 +390,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        bf16=use_bf16,
+        bf16=True,
         fp16=False,
         max_grad_norm=1.0,
         logging_dir=f"{output_dir}/logs",
@@ -380,6 +398,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         dataloader_num_workers=2,
         report_to="none",
         seed=SEED,
+        deepspeed=DS_CONFIG,
     )
 
     trainer = Trainer(
@@ -400,7 +419,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     else:
         print("[Resume] No checkpoint found -- starting training from scratch.")
 
-    print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(8*4)}")
+    print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(4*8)}")
     trainer.train(resume_from_checkpoint=last_checkpoint)
 
     trainer.save_model(output_dir)
@@ -408,18 +427,18 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     print(f"[Save] Best model written to {output_dir}")
 
     # ---- Final eval loss (for the master scores row) ----
-    # trainer.evaluate() is a collective/synchronized op under DDP -- every
-    # rank must call it (skipping it on non-zero ranks would hang the others
-    # waiting on a collective that never gets their contribution).
+    # trainer.evaluate() is a collective/synchronized op under DeepSpeed/DDP --
+    # every rank must call it (skipping it on non-zero ranks would hang the
+    # others waiting on a collective that never gets their contribution).
     val_metrics = trainer.evaluate()
     val_loss = val_metrics.get("eval_loss", float("nan"))
 
     # Everything below is plain model.generate() + file I/O, NOT a
-    # Trainer-managed collective op. Under DDP (torchrun --nproc_per_node>1)
-    # every rank holds an identical trained model, so running this on all
-    # ranks would redundantly repeat the same generation 4x AND have every
-    # rank write to the same output files at once (corruption/duplicate
-    # rows). Restrict it to the main process only.
+    # Trainer-managed collective op. Under DeepSpeed ZeRO-2, every rank holds
+    # a full replica of the (now-trained) model weights, so running this on
+    # all ranks would redundantly repeat the same generation N times AND
+    # have every rank write to the same output files at once
+    # (corruption/duplicate rows). Restrict it to the main process only.
     if trainer.is_world_process_zero():
         print(f"\nVAL  loss = {val_loss:.4f}")
 

@@ -408,48 +408,59 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     print(f"[Save] Best model written to {output_dir}")
 
     # ---- Final eval loss (for the master scores row) ----
+    # trainer.evaluate() is a collective/synchronized op under DDP -- every
+    # rank must call it (skipping it on non-zero ranks would hang the others
+    # waiting on a collective that never gets their contribution).
     val_metrics = trainer.evaluate()
     val_loss = val_metrics.get("eval_loss", float("nan"))
-    print(f"\nVAL  loss = {val_loss:.4f}")
 
-    # ---- Real generation-based BLEU/chrF++ on val + test (beam=5) ----
-    print("\n=== Generating on validation set (beam=5) ===")
-    _, _, val_bleu, val_chrf = generate_and_score(
-        list(dataset_dict["validation"]), src_col, tgt_col, src_name, tgt_name,
-        model, tokenizer, device)
-    print(f"VAL  BLEU   = {val_bleu:.4f}")
-    print(f"VAL  chrF++ = {val_chrf:.4f}")
+    # Everything below is plain model.generate() + file I/O, NOT a
+    # Trainer-managed collective op. Under DDP (torchrun --nproc_per_node>1)
+    # every rank holds an identical trained model, so running this on all
+    # ranks would redundantly repeat the same generation 4x AND have every
+    # rank write to the same output files at once (corruption/duplicate
+    # rows). Restrict it to the main process only.
+    if trainer.is_world_process_zero():
+        print(f"\nVAL  loss = {val_loss:.4f}")
 
-    print("\n=== Generating on test set (beam=5) ===")
-    test_preds, test_refs, test_bleu, test_chrf = generate_and_score(
-        list(dataset_dict["test"]), src_col, tgt_col, src_name, tgt_name,
-        model, tokenizer, device)
-    print(f"TEST BLEU   = {test_bleu:.4f}")
-    print(f"TEST chrF++ = {test_chrf:.4f}")
+        # ---- Real generation-based BLEU/chrF++ on val + test (beam=5) ----
+        print("\n=== Generating on validation set (beam=5) ===")
+        _, _, val_bleu, val_chrf = generate_and_score(
+            list(dataset_dict["validation"]), src_col, tgt_col, src_name, tgt_name,
+            model, tokenizer, device)
+        print(f"VAL  BLEU   = {val_bleu:.4f}")
+        print(f"VAL  chrF++ = {val_chrf:.4f}")
 
-    test_src_texts = [r[src_col] for r in dataset_dict["test"]]
-    preds_path = f"test_predictions_{language}_{direction}.csv"
-    pd.DataFrame({
-        f"source_{src_col.lower()}":     test_src_texts,
-        f"reference_{tgt_col.lower()}":  test_refs,
-        f"prediction_{tgt_col.lower()}": test_preds,
-    }).to_csv(preds_path, index=False, encoding="utf-8-sig")
-    print(f"[Save] Predictions: {preds_path}")
+        print("\n=== Generating on test set (beam=5) ===")
+        test_preds, test_refs, test_bleu, test_chrf = generate_and_score(
+            list(dataset_dict["test"]), src_col, tgt_col, src_name, tgt_name,
+            model, tokenizer, device)
+        print(f"TEST BLEU   = {test_bleu:.4f}")
+        print(f"TEST chrF++ = {test_chrf:.4f}")
 
-    print(f"\n=== FINAL TEST SCORES [{language}/{direction}] (beam=5) ===")
-    print(f"BLEU   : {test_bleu:.4f}")
-    print(f"chrF++ : {test_chrf:.4f}")
+        test_src_texts = [r[src_col] for r in dataset_dict["test"]]
+        preds_path = f"test_predictions_{language}_{direction}.csv"
+        pd.DataFrame({
+            f"source_{src_col.lower()}":     test_src_texts,
+            f"reference_{tgt_col.lower()}":  test_refs,
+            f"prediction_{tgt_col.lower()}": test_preds,
+        }).to_csv(preds_path, index=False, encoding="utf-8-sig")
+        print(f"[Save] Predictions: {preds_path}")
 
-    with open(f"final_scores_{language}_{direction}.txt", "w", encoding="utf-8") as f:
-        f.write(f"Language: {language}  Direction: {direction}  ({src_col} -> {tgt_col})\n")
-        f.write(f"VAL  loss   : {val_loss:.4f}\n")
-        f.write(f"VAL  BLEU   : {val_bleu:.4f}\n")
-        f.write(f"VAL  chrF++ : {val_chrf:.4f}\n")
-        f.write(f"TEST BLEU   : {test_bleu:.4f}\n")
-        f.write(f"TEST chrF++ : {test_chrf:.4f}\n")
+        print(f"\n=== FINAL TEST SCORES [{language}/{direction}] (beam=5) ===")
+        print(f"BLEU   : {test_bleu:.4f}")
+        print(f"chrF++ : {test_chrf:.4f}")
 
-    append_master_scores(language, direction, val_loss, val_bleu, val_chrf, test_bleu, test_chrf)
-    print(f"\nDone with {language}/{direction}. Master scores: {SCORES_CSV}")
+        with open(f"final_scores_{language}_{direction}.txt", "w", encoding="utf-8") as f:
+            f.write(f"Language: {language}  Direction: {direction}  ({src_col} -> {tgt_col})\n")
+            f.write(f"VAL  loss   : {val_loss:.4f}\n")
+            f.write(f"VAL  BLEU   : {val_bleu:.4f}\n")
+            f.write(f"VAL  chrF++ : {val_chrf:.4f}\n")
+            f.write(f"TEST BLEU   : {test_bleu:.4f}\n")
+            f.write(f"TEST chrF++ : {test_chrf:.4f}\n")
+
+        append_master_scores(language, direction, val_loss, val_bleu, val_chrf, test_bleu, test_chrf)
+        print(f"\nDone with {language}/{direction}. Master scores: {SCORES_CSV}")
 
 
 def main():

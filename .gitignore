@@ -5,11 +5,12 @@ datasets
 **/directions/
 **/tok_extensions/
 
-# hb_pja_nllb_finetune.py / mt5_finetune.py / qwen_finetune.py per-run outputs,
-# any language/direction
+# hb_pja_nllb_finetune.py / mt5_finetune.py / qwen_finetune.py / llama_finetune.py
+# per-run outputs, any language/direction
 nllb-*-finetuned/
 mt5-*-finetuned/
 qwen-*-finetuned/
+llama-*-finetuned/
 splits_*/
 all_languages_scores.csv
 test_predictions_*.csv
