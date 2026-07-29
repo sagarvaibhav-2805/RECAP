@@ -61,8 +61,8 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import sacrebleu
 
 MAX_LENGTH     = 128
-BATCH_SIZE     = 16
-NUM_BEAMS      = 5
+BATCH_SIZE     = 32
+NUM_BEAMS      = 4
 SAVE_EVERY_ROWS = 5000  # flush predictions to disk this often, for resumability
 
 SCORES_CSV = Path("./infer_scores.csv")
