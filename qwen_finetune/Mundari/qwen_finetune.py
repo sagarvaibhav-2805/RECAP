@@ -66,7 +66,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-from transformers.trainer_utils import get_last_checkpoint
 import sacrebleu
 
 # =============================================================
@@ -443,17 +442,20 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     if already_trained:
         print(f"[Skip] Training skipped -- using existing model from {output_dir}")
     else:
-        # Resume from the last checkpoint in output_dir if one exists (e.g.
-        # the job got killed mid-run) -- restores model/optimizer/scheduler
-        # state and the exact step count, rather than silently restarting.
-        last_checkpoint = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
-        if last_checkpoint is not None:
-            print(f"[Resume] Found checkpoint at {last_checkpoint} -- resuming training from there.")
-        else:
-            print("[Resume] No checkpoint found -- starting training from scratch.")
-
+        # NOTE: deliberately NOT resuming from any leftover checkpoint-*/
+        # folder here. trainer.train(resume_from_checkpoint=...) reliably
+        # crashed on this cluster with a DDP _verify_param_shape_across_processes
+        # overflow (RuntimeError: value cannot be converted to type int
+        # without overflow) -- reproduced with two different checkpoints
+        # from two different directions, so it's not one bad file, it's the
+        # resume mechanism itself on this environment. Always training fresh
+        # is slower on a re-run but reliable; the "already_trained" check
+        # above still avoids wasting a full retrain on directions that
+        # already finished.
+        print("[Train] Training from scratch (checkpoint-resume disabled -- "
+              "see comment above).")
         print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(8*4)}")
-        trainer.train(resume_from_checkpoint=last_checkpoint)
+        trainer.train()
 
         trainer.save_model(output_dir)
         tokenizer.save_pretrained(output_dir)
