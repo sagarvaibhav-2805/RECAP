@@ -50,6 +50,7 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 import numpy as np
 import pandas as pd
 import torch
+import torch.distributed as dist
 
 print("=" * 60)
 print("torch version:", torch.__version__)
@@ -515,6 +516,19 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
 
         append_master_scores(language, direction, val_loss, val_bleu, val_chrf, test_bleu, test_chrf)
         print(f"\nDone with {language}/{direction}. Master scores: {SCORES_CSV}")
+
+    # ---- Resync before the next direction ----
+    # Only rank 0 ran the block above (generation over val+test can take many
+    # minutes). Without a barrier here, ranks 1-3 fall through immediately and
+    # start the NEXT direction's data loading/training -- a fresh DDP
+    # collective -- while rank 0 is still generating. When rank 0 finally
+    # tries to join that collective it arrives late and out of step with the
+    # others, which is what produced the ALLGATHER timeouts /
+    # _verify_param_shape_across_processes crashes seen between directions.
+    # This barrier makes every rank wait for rank 0 to finish scoring before
+    # any of them moves on.
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
 
 
 def main():
