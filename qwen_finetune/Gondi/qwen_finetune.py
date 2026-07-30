@@ -299,6 +299,22 @@ def append_master_scores(language, direction, val_loss, val_bleu, val_chrf,
 # =============================================================
 # 6. MAIN
 # =============================================================
+def _has_final_model(output_dir):
+    """A direction counts as fully trained if trainer.save_model()'s output
+    sits directly in output_dir (config.json + a weights file at the top
+    level -- NOT just inside a checkpoint-*/ subfolder, which may be an
+    incomplete/stale intermediate save)."""
+    if not os.path.isdir(output_dir):
+        return False
+    has_config = os.path.exists(os.path.join(output_dir, "config.json"))
+    has_weights = (
+        os.path.exists(os.path.join(output_dir, "model.safetensors"))
+        or os.path.exists(os.path.join(output_dir, "pytorch_model.bin"))
+        or os.path.exists(os.path.join(output_dir, "model.safetensors.index.json"))
+    )
+    return has_config and has_weights
+
+
 def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     assert language in LANGUAGES, \
         f"Unknown language '{language}' in config.json, choices: {list(LANGUAGES.keys())}"
@@ -319,9 +335,19 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         src_col, tgt_col, src_name, tgt_name = tgt_column, "Hindi", tgt_column, HIN_NAME
 
     output_dir = f"./qwen-{language}-{direction}-finetuned"
+    final_scores_path = f"final_scores_{language}_{direction}.txt"
     print(f"\n========== Language: {language} | Direction: {direction} ==========")
     print(f"  {src_col} -> {tgt_col}")
     print(f"[Output] {output_dir}")
+
+    # If this direction already ran to full completion (training + eval +
+    # scoring) in a previous invocation, there's nothing left to do -- skip
+    # it entirely rather than reloading data/model just to redo work whose
+    # results are already on disk.
+    if os.path.exists(final_scores_path):
+        print(f"[Skip] {language}/{direction} already fully completed "
+              f"(found {final_scores_path}) -- nothing to do.")
+        return
 
     # ---- Data ----
     train_df, val_df, test_df = load_splits(train_csv, val_csv, test_csv, tgt_column)
@@ -331,19 +357,42 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
     dataset_dict = DatasetDict({"train": train_set, "validation": val_set, "test": test_set})
     print(f"[Data] train={len(train_set)}  val={len(val_set)}  test={len(test_set)}")
 
-    # ---- Tokenizer + model ----
-    tokenizer, model, device = load_tokenizer_and_model()
+    # Training already finished and saved a final model here, but scoring
+    # didn't finish (no final_scores file) -- load the ALREADY-TRAINED model
+    # straight from output_dir instead of retraining. This is deliberately
+    # NOT the same as resume_from_checkpoint: every rank loads the same
+    # complete, already-saved weights via plain from_pretrained (the same
+    # mechanism used to load the base model in the first place), so there's
+    # no risk of the cross-rank shape mismatch that resuming from a stale/
+    # incomplete checkpoint-*/ folder caused.
+    already_trained = _has_final_model(output_dir)
+
+    if already_trained:
+        print(f"[Resume] Found a completed final model in {output_dir} -- "
+              "skipping training, only re-running evaluation/scoring.")
+        tokenizer = AutoTokenizer.from_pretrained(output_dir)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        model = AutoModelForCausalLM.from_pretrained(output_dir, torch_dtype=torch.bfloat16)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        tokenizer, model, device = load_tokenizer_and_model()
 
     # ---- Tokenize (response-only loss masking) ----
     pre_fn = make_preprocess_fn(tokenizer, src_col, tgt_col, src_name, tgt_name)
     candidate_cols = ["English", "Hindi", tgt_column, "Unique_ID"]
     cols_to_remove = [c for c in candidate_cols if c in train_set.column_names]
 
-    print("[Tokenize] Mapping splits ...")
-    tokenized_train = dataset_dict["train"].map(
-        pre_fn, batched=True, remove_columns=cols_to_remove, desc="train")
+    print("[Tokenize] Mapping validation split ...")
     tokenized_val = dataset_dict["validation"].map(
         pre_fn, batched=True, remove_columns=cols_to_remove, desc="val")
+
+    if already_trained:
+        tokenized_train = None
+    else:
+        print("[Tokenize] Mapping train split ...")
+        tokenized_train = dataset_dict["train"].map(
+            pre_fn, batched=True, remove_columns=cols_to_remove, desc="train")
 
     # ---- Trainer ----
     data_collator = CausalLMPaddingCollator(pad_token_id=tokenizer.pad_token_id)
@@ -391,21 +440,24 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         data_collator=data_collator,
     )
 
-    # Resume from the last checkpoint in output_dir if one exists (e.g. the
-    # job got killed mid-run) -- restores model/optimizer/scheduler state and
-    # the exact step count, rather than silently restarting from scratch.
-    last_checkpoint = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
-    if last_checkpoint is not None:
-        print(f"[Resume] Found checkpoint at {last_checkpoint} -- resuming training from there.")
+    if already_trained:
+        print(f"[Skip] Training skipped -- using existing model from {output_dir}")
     else:
-        print("[Resume] No checkpoint found -- starting training from scratch.")
+        # Resume from the last checkpoint in output_dir if one exists (e.g.
+        # the job got killed mid-run) -- restores model/optimizer/scheduler
+        # state and the exact step count, rather than silently restarting.
+        last_checkpoint = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
+        if last_checkpoint is not None:
+            print(f"[Resume] Found checkpoint at {last_checkpoint} -- resuming training from there.")
+        else:
+            print("[Resume] No checkpoint found -- starting training from scratch.")
 
-    print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(8*4)}")
-    trainer.train(resume_from_checkpoint=last_checkpoint)
+        print(f"[Train] epochs={epochs}  steps/epoch~{len(tokenized_train)//(8*4)}")
+        trainer.train(resume_from_checkpoint=last_checkpoint)
 
-    trainer.save_model(output_dir)
-    tokenizer.save_pretrained(output_dir)
-    print(f"[Save] Best model written to {output_dir}")
+        trainer.save_model(output_dir)
+        tokenizer.save_pretrained(output_dir)
+        print(f"[Save] Best model written to {output_dir}")
 
     # ---- Final eval loss (for the master scores row) ----
     # trainer.evaluate() is a collective/synchronized op under DDP -- every
