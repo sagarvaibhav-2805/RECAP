@@ -227,7 +227,7 @@ class CausalLMPaddingCollator:
 # 4. GENERATION-BASED SCORING  (BLEU + chrF++ via real model.generate())
 # =============================================================
 def generate_and_score(records, src_col, tgt_col, src_name, tgt_name,
-                        model, tokenizer, device, num_beams=5, batch_size=16):
+                        model, tokenizer, device, num_beams=4, batch_size=32):
     model.eval()
     tokenizer.padding_side = "left"  # required for correct batched causal-LM generation
 
