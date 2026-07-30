@@ -40,6 +40,7 @@ Language, direction(s), data paths, and epochs are read from config.json
 import os
 import json
 import csv
+import datetime
 from pathlib import Path
 
 # --- silence wandb / tokenizer warnings BEFORE importing torch/transformers ---
@@ -531,7 +532,30 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         dist.barrier()
 
 
+def _init_distributed_with_extended_timeout(hours=4):
+    # Rank 0 alone runs beam-search generation over thousands of val/test
+    # rows after training finishes (the other ranks skip it, see
+    # is_world_process_zero() below) -- on the largest test sets this can
+    # take well over 30 minutes. The default NCCL collective timeout is 30
+    # min, so ranks 1-3 waiting at the post-scoring dist.barrier() (or
+    # accelerate/Trainer's own collectives for the next direction) would
+    # time out and crash the whole job before rank 0 catches up. Initialising
+    # the process group ourselves, first, with a much longer timeout avoids
+    # this -- accelerate/Trainer see the group is already initialized and
+    # reuse it instead of creating their own with the 30 min default.
+    if int(os.environ.get("WORLD_SIZE", "1")) <= 1 or dist.is_initialized():
+        return
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend="nccl", timeout=datetime.timedelta(hours=hours))
+    print(f"[DDP] Process group initialised manually with timeout={hours}h "
+          f"(rank={dist.get_rank()}/{dist.get_world_size()})")
+
+
 def main():
+    _init_distributed_with_extended_timeout()
+
     config_path = Path(__file__).resolve().parent / "config.json"
     with open(config_path, "r", encoding="utf-8") as f:
         run_cfg = json.load(f)
