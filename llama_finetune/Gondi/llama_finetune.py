@@ -93,7 +93,7 @@ import sacrebleu
 # =============================================================
 # CONFIG
 # =============================================================
-MODEL_NAME     = "/PATH/TO/llama-3.1-8b"   # *** UPDATE with the real HPC path ***
+MODEL_NAME     = "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/Models/Llama-3.1-8B"   # *** UPDATE with the real HPC path ***
 DS_CONFIG      = str(Path(__file__).resolve().parent / "ds_config.json")
 MAX_LENGTH     = 256   # full prompt+response token budget (chat format adds overhead)
 MAX_NEW_TOKENS = 128   # generation cap for the response only
