@@ -532,7 +532,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         dist.barrier()
 
 
-def _init_distributed_with_extended_timeout(hours=4):
+def _init_distributed_with_extended_timeout(hours=6):
     # Rank 0 alone runs beam-search generation over thousands of val/test
     # rows after training finishes (the other ranks skip it, see
     # is_world_process_zero() below) -- on the largest test sets this can

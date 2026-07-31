@@ -254,7 +254,7 @@ class CausalLMPaddingCollator:
 # 4. GENERATION-BASED SCORING  (BLEU + chrF++ via real model.generate())
 # =============================================================
 def generate_and_score(records, src_col, tgt_col, src_name, tgt_name,
-                        model, tokenizer, device, num_beams=5, batch_size=16):
+                        model, tokenizer, device, num_beams=4, batch_size=16):
     model.eval()
     tokenizer.padding_side = "left"  # required for correct batched causal-LM generation
 
@@ -555,7 +555,7 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         dist.barrier()
 
 
-def _init_distributed_with_extended_timeout(hours=4):
+def _init_distributed_with_extended_timeout(hours=6):
     # Rank 0 alone runs beam-search generation over thousands of val/test
     # rows after training finishes (the other ranks skip it, see
     # is_world_process_zero() above) -- on an 8B model with the largest test
