@@ -1,0 +1,8 @@
+{
+  "language": "mundari",
+  "direction": "hi2tgt",
+  "epochs": 10,
+  "train_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/train.csv",
+  "val_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/val.csv",
+  "test_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Mundari/Mun/test.csv"
+}

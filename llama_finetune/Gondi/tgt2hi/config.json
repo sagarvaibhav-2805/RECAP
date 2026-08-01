@@ -1,0 +1,8 @@
+{
+  "language": "gondi",
+  "direction": "tgt2hi",
+  "epochs": 10,
+  "train_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/train.csv",
+  "val_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/val.csv",
+  "test_csv": "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/Gondi/test.csv"
+}

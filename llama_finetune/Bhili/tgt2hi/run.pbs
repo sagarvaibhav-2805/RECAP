@@ -1,0 +1,22 @@
+#!/bin/sh
+#PBS -N llama_bhili_tgt2hi
+#PBS -P misn.mota2.spons
+#PBS -m bea
+#PBS -M aiy257590@scai.iitd.ac.in
+#PBS -l select=1:ncpus=1:ngpus=4
+#PBS -l walltime=48:00:00
+
+echo "==============================="
+echo $PBS_JOBID
+cat $PBS_NODEFILE
+echo "==============================="
+cd $HOME
+
+cd /home/scai/msr/aiy257590/flash/GRPO_RESEARCH/llama_finetune/Bhili/tgt2hi
+
+source ~/.bashrc
+conda activate mt5
+module load cuda/13.0
+export CUDA_HOME=/apps/cuda/13.0
+
+/home/scai/msr/aiy257590/.conda/envs/mt5/bin/python -m torch.distributed.run --nproc_per_node=4 llama_finetune.py
