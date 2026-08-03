@@ -448,7 +448,14 @@ def run_direction(language, direction, train_csv, val_csv, test_csv, epochs):
         dataloader_num_workers=2,
         report_to="none",
         seed=SEED,
-        deepspeed=DS_CONFIG,
+        # DeepSpeed is only needed to fit full-parameter training of an 8B
+        # model in memory. When already_trained is True we skip trainer.train()
+        # entirely and go straight to trainer.evaluate() -- DeepSpeed's ZeRO-2
+        # doesn't support "inference-only" init (deepspeed_init raises "ZeRO
+        # inference only makes sense with ZeRO Stage 3" if evaluate()/predict()
+        # is called before any train() call), so leave it off in that case and
+        # let Trainer fall back to plain DDP, same as qwen_finetune.py.
+        deepspeed=None if already_trained else DS_CONFIG,
     )
 
     trainer = Trainer(
