@@ -72,6 +72,21 @@ logs/
 runs/
 wandb/
 
+# BERT experiment outputs
+BERT-frozen-MLM_only/**/weights/
+BERT-frozen-MLM_only/**/logs/
+BERT-frozen-MLM_only/**/losses/
+BERT-frozen-MLM_only/**/results/
+BERT-frozen-MLM_only/**/trackruns/
+
+# Model files
+*.safetensors
+*.pt
+*.bin
+
+# Ignore downloaded Hindi BERT model
+BERT-frozen-MLM_only/hindi-bert-v2/
+
 # Python cache
 __pycache__/
 *.py[cod]
