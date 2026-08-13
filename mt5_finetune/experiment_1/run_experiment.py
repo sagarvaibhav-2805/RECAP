@@ -10,8 +10,11 @@ directions:
     hi2tgt : Hindi -> Bhili   (checkpoint: ../Bhili/mt5-bhili-hi2tgt-finetuned)
     tgt2hi : Bhili -> Hindi   (checkpoint: ../Bhili/mt5-bhili-tgt2hi-finetuned)
 
-Per-direction output CSV, 7 columns:
-    source, gold_truth, beam_1, beam_2, beam_3, beam_4, beam_5
+Per-direction output CSV, 17 columns:
+    source, gold_truth,
+    beam_1, BLEU_1, chrf++_1, ... beam_5, BLEU_5, chrf++_5
+BLEU/chrF++ are per-sentence scores (sacrebleu.sentence_bleu/sentence_chrf)
+of that row's beam-N translation against gold_truth, not corpus-level.
 
 At this scale (N_SAMPLES x 5 beams x 2 directions generate() calls) this is
 a real, potentially long-running job, so progress is checkpointed every
@@ -19,14 +22,17 @@ SAVE_EVERY_ROWS rows -- if the job dies partway through, rerunning picks up
 from the last flushed row instead of restarting.
 
 After a direction's CSV is complete, beam_agreement.json is built (or
-updated) by comparing beam_1..beam_5 TEXT directly (identical translation
-text implies identical score, and the CSV here carries no per-beam scores
-to compare instead). For each direction it records, for every distinct
-partition of the 5 beams into "agreed identically" groups, how many rows
-fall into that exact pattern, e.g.:
-    "[1]|[2,3,4,5]"   -> beam 1 alone, beams 2-5 all agreed
-    "[1,2]|[3,4,5]"   -> beams 1-2 agreed, beams 3-5 agreed (two groups)
-    "[1]|[2]|[3]|[4,5]" -> beams 1,2,3 each different from everything, 4-5 agreed
+updated) with two things per direction:
+  - "patterns": beam_1..beam_5 TEXT compared directly (identical text
+    implies identical score) -- for every distinct partition of the 5
+    beams into "agreed identically" groups, how many rows fall into that
+    exact pattern, e.g.:
+        "[1]|[2,3,4,5]"     -> beam 1 alone, beams 2-5 all agreed
+        "[1,2]|[3,4,5]"     -> beams 1-2 agreed, beams 3-5 agreed
+        "[1]|[2]|[3]|[4,5]" -> beams 1,2,3 each different, 4-5 agreed
+  - "mean_scores": column-wise mean BLEU and mean chrF++ for each beam
+    width (5 BLEU averages + 5 chrF++ averages), i.e. mean(BLEU_1) across
+    all rows, mean(BLEU_2) across all rows, etc.
 
 Run from this directory (mt5_finetune/experiment_1/) -- checkpoint paths
 are relative to here, pointing at the sibling ../Bhili/ folder:
@@ -41,6 +47,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 import pandas as pd
+import sacrebleu
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
@@ -65,7 +72,9 @@ DIRECTIONS = {
     },
 }
 
-COLUMNS = ["source", "gold_truth"] + [f"beam_{b}" for b in BEAM_RANGE]
+COLUMNS = ["source", "gold_truth"]
+for _b in BEAM_RANGE:
+    COLUMNS += [f"beam_{_b}", f"BLEU_{_b}", f"chrf++_{_b}"]
 
 
 def load_samples():
@@ -138,7 +147,10 @@ def run_direction(direction, cfg, sample, device):
                     truncation=True, max_length=MAX_LENGTH,
                 ).to(device)
                 out = model.generate(**enc, max_length=MAX_LENGTH, num_beams=beam)
-                row.append(tokenizer.decode(out[0], skip_special_tokens=True))
+                pred = tokenizer.decode(out[0], skip_special_tokens=True)
+                bleu = f"{sacrebleu.sentence_bleu(pred, [gold_text]).score:.4f}"
+                chrfpp = f"{sacrebleu.sentence_chrf(pred, [gold_text], word_order=2).score:.4f}"
+                row += [pred, bleu, chrfpp]
             buf_rows.append(row)
 
             if len(buf_rows) >= SAVE_EVERY_ROWS:
@@ -172,6 +184,7 @@ def build_agreement_json():
             continue
         df = pd.read_csv(out_path)
         total = len(df)
+
         pattern_counts = {}
         for _, row in df.iterrows():
             groups = _group_beams_by_text(row)
@@ -181,7 +194,15 @@ def build_agreement_json():
             k: {"count": v, "pct": round(100.0 * v / total, 2) if total else 0.0}
             for k, v in sorted(pattern_counts.items(), key=lambda kv: -kv[1])
         }
-        result[direction] = {"total_rows": total, "patterns": patterns}
+
+        mean_bleu = {f"beam_{b}": round(df[f"BLEU_{b}"].astype(float).mean(), 4) for b in BEAM_RANGE}
+        mean_chrf = {f"beam_{b}": round(df[f"chrf++_{b}"].astype(float).mean(), 4) for b in BEAM_RANGE}
+
+        result[direction] = {
+            "total_rows": total,
+            "patterns": patterns,
+            "mean_scores": {"BLEU": mean_bleu, "chrf++": mean_chrf},
+        }
 
     json_path = Path("./beam_agreement.json")
     with open(json_path, "w", encoding="utf-8") as f:
@@ -189,6 +210,8 @@ def build_agreement_json():
     print(f"\n[Save] {json_path}")
     for direction, info in result.items():
         print(f"\n{direction} (total_rows={info['total_rows']}):")
+        print(f"  mean BLEU   : {info['mean_scores']['BLEU']}")
+        print(f"  mean chrF++ : {info['mean_scores']['chrf++']}")
         for pattern, stats in info["patterns"].items():
             print(f"  {pattern:30s} count={stats['count']:5d}  pct={stats['pct']:.2f}%")
 
