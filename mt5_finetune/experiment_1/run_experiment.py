@@ -10,8 +10,15 @@ directions:
     hi2tgt : Hindi -> Bhili   (checkpoint: ../Bhili/mt5-bhili-hi2tgt-finetuned)
     tgt2hi : Bhili -> Hindi   (checkpoint: ../Bhili/mt5-bhili-tgt2hi-finetuned)
 
-Output: one CSV per direction, 7 columns:
-    source, gold_truth, beam_1, beam_2, beam_3, beam_4, beam_5
+Output: one CSV per direction, 17 columns:
+    source, gold_truth,
+    beam_1, BLEU_1, chrf++_1,
+    beam_2, BLEU_2, chrf++_2,
+    beam_3, BLEU_3, chrf++_3,
+    beam_4, BLEU_4, chrf++_4,
+    beam_5, BLEU_5, chrf++_5
+BLEU/chrF++ are per-sentence scores (sacrebleu.sentence_bleu/sentence_chrf)
+of that row's beam-N translation against gold_truth, not corpus-level.
 
 Run from this directory (mt5_finetune/experiment_1/) -- checkpoint paths
 are relative to here, pointing at the sibling ../Bhili/ folder:
@@ -25,6 +32,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 import pandas as pd
+import sacrebleu
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
@@ -93,7 +101,12 @@ def run_direction(direction, cfg, sample, device):
 
     result = pd.DataFrame({"source": sources, "gold_truth": golds})
     for beam in BEAM_RANGE:
-        result[f"beam_{beam}"] = beam_preds[beam]
+        preds = beam_preds[beam]
+        bleu_scores = [sacrebleu.sentence_bleu(p, [g]).score for p, g in zip(preds, golds)]
+        chrf_scores = [sacrebleu.sentence_chrf(p, [g], word_order=2).score for p, g in zip(preds, golds)]
+        result[f"beam_{beam}"] = preds
+        result[f"BLEU_{beam}"] = [f"{s:.4f}" for s in bleu_scores]
+        result[f"chrf++_{beam}"] = [f"{s:.4f}" for s in chrf_scores]
 
     out_path = Path(f"./{direction}_beam_comparison.csv")
     result.to_csv(out_path, index=False, encoding="utf-8-sig")
