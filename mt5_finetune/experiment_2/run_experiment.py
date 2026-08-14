@@ -8,15 +8,19 @@ all with num_beams=2 fixed (do_sample=True + num_beams=2 is HF's "beam
 sample" decoding -- multinomial sampling within a 2-beam search, not plain
 greedy/beam search):
 
-    id  label               temperature  top_p
-    1   temp_0.7            0.7          1.0   (mild diversity)
-    2   temp_1.5            1.5          1.0   (strong diversity)
-    3   topp_0.7            1.0          0.7   (mild-moderate diversity)
-    4   topp_0.9            1.0          0.9   (moderate diversity)
-    5   topp_0.99           1.0          0.99  (near full-distribution)
-    6   temp_1.3_topp_0.85  1.3          0.85  (combined -- reshapes AND
-                                                 truncates the distribution,
-                                                 likely most different of all six)
+    id  label                temperature  top_p
+    1   temp_0.7             0.7          1.0   (mild diversity)
+    2   temp_1.5             1.5          1.0   (strong diversity)
+    3   topp_0.7             1.0          0.7   (mild-moderate diversity)
+    4   temp_1.15_topp_0.9   1.15         0.9   (mild combined -- replaced a
+                                                  plain topp_0.9 config that
+                                                  scored almost identically to
+                                                  temp_0.7, i.e. wasn't adding
+                                                  distinct diversity)
+    5   topp_0.99            1.0          0.99  (near full-distribution)
+    6   temp_1.3_topp_0.85   1.3          0.85  (combined -- reshapes AND
+                                                  truncates the distribution,
+                                                  likely most different of all six)
 
 Each config uses its own fixed seed (SEED + config id) set immediately
 before that generate() call, so every individual output is reproducible
@@ -72,7 +76,7 @@ CONFIGS = [
     {"id": 1, "label": "temp_0.7",           "temperature": 0.7, "top_p": 1.0},
     {"id": 2, "label": "temp_1.5",           "temperature": 1.5, "top_p": 1.0},
     {"id": 3, "label": "topp_0.7",           "temperature": 1.0, "top_p": 0.7},
-    {"id": 4, "label": "topp_0.9",           "temperature": 1.0, "top_p": 0.9},
+    {"id": 4, "label": "temp_1.15_topp_0.9",  "temperature": 1.15, "top_p": 0.9},
     {"id": 5, "label": "topp_0.99",          "temperature": 1.0, "top_p": 0.99},
     {"id": 6, "label": "temp_1.3_topp_0.85", "temperature": 1.3, "top_p": 0.85},
 ]
