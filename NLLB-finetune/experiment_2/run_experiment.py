@@ -35,9 +35,18 @@ Per-direction output CSV, 20 columns:
 BLEU/chrF++ are per-sentence scores (sacrebleu.sentence_bleu/sentence_chrf)
 of that row's sample-N translation against gold_truth, not corpus-level.
 
-Checkpointed every SAVE_EVERY_ROWS rows (same resumability pattern as
-experiment_1) -- if the job dies partway through, rerunning picks up from
-the last flushed row instead of restarting.
+Generation is batched across rows (BATCH_SIZE rows per generate() call, one
+call per config) rather than one row at a time -- rows within a batch share
+a config's temperature/top_p, so they can be generated together with
+padding, which keeps the GPU actually busy instead of bottlenecked on
+Python-loop/kernel-launch overhead between single-sequence calls. A full
+row is only appended to the write buffer once all 6 configs have finished
+for its batch, so if the job dies mid-batch that batch's work is lost (up
+to BATCH_SIZE rows), not just the last row -- a worthwhile tradeoff for the
+large GPU-utilization/wall-clock improvement. Checkpointed to disk every
+SAVE_EVERY_ROWS rows (same resumability pattern as experiment_1) -- if the
+job dies, rerunning picks up from the last flushed row instead of
+restarting from scratch.
 
 After a direction's CSV is complete, sample_agreement.json is built (or
 updated) with, per direction:
@@ -70,6 +79,7 @@ MAX_LENGTH      = 128   # same as NLLB-finetune/*/infer.py
 SEED            = 42
 N_SAMPLES       = 5000
 NUM_BEAMS       = 2     # fixed for all 6 configs, per instruction
+BATCH_SIZE      = 32    # rows generated together per config, for GPU utilization
 SAVE_EVERY_ROWS = 500
 
 TEST_CSV = "/home/scai/msr/aiy257590/flash/GRPO_RESEARCH/datasets/bhilli/test.csv"
@@ -169,13 +179,19 @@ def run_direction(direction, cfg, sample, device):
 
     buf_rows = []
     with torch.no_grad():
-        for i in range(n_done, total_rows):
-            src_text, gold_text = sources[i], golds[i]
-            row = [src_text, gold_text]
+        for batch_start in range(n_done, total_rows, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_rows)
+            batch_src = sources[batch_start:batch_end]
+            batch_gold = golds[batch_start:batch_end]
+
+            # rows[j] accumulates [source, gold, sample_1, BLEU_1, chrf++_1, ...]
+            # for the j-th sentence in this batch, filled in one config at a time.
+            rows = [[s, g] for s, g in zip(batch_src, batch_gold)]
+
             for sc in CONFIGS:
                 torch.manual_seed(SEED + sc["id"])
                 enc = tokenizer(
-                    src_text, return_tensors="pt",
+                    batch_src, return_tensors="pt", padding=True,
                     truncation=True, max_length=MAX_LENGTH,
                 ).to(device)
                 out = model.generate(
@@ -187,15 +203,19 @@ def run_direction(direction, cfg, sample, device):
                     temperature=sc["temperature"],
                     top_p=sc["top_p"],
                 )
-                pred = tokenizer.decode(out[0], skip_special_tokens=True)
-                bleu = f"{sacrebleu.sentence_bleu(pred, [gold_text]).score:.4f}"
-                chrfpp = f"{sacrebleu.sentence_chrf(pred, [gold_text], word_order=2).score:.4f}"
-                row += [pred, bleu, chrfpp]
-            buf_rows.append(row)
+                preds = tokenizer.batch_decode(out, skip_special_tokens=True)
+                for j, pred in enumerate(preds):
+                    gold_text = batch_gold[j]
+                    bleu = f"{sacrebleu.sentence_bleu(pred, [gold_text]).score:.4f}"
+                    chrfpp = f"{sacrebleu.sentence_chrf(pred, [gold_text], word_order=2).score:.4f}"
+                    rows[j] += [pred, bleu, chrfpp]
+
+            buf_rows.extend(rows)
+            print(f"  [Progress] {direction}: {batch_end}/{total_rows} rows done")
 
             if len(buf_rows) >= SAVE_EVERY_ROWS:
                 _flush(buf_rows, out_path)
-                print(f"  [Save] {direction}: {i + 1}/{total_rows} rows done")
+                print(f"  [Save] {direction}: {batch_end}/{total_rows} rows done")
                 buf_rows = []
 
     _flush(buf_rows, out_path)
