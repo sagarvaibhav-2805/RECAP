@@ -1,7 +1,10 @@
 """
 Merge per-model inference outputs (NLLB, mT5, Qwen, Llama) into combined
 per-direction comparison CSVs, including gold-truth references and
-per-sentence BLEU/chrF++ scores for each model's prediction.
+per-sentence BLEU/chrF++/COMET scores for each model's prediction.
+
+Restricted to hi2tgt and tgt2hi only (see DIRECTIONS below) -- en2tgt and
+tgt2en are intentionally skipped.
 
 Each model's infer.py writes infer_predictions_<lang>_<direction>.csv with a
 "source_<col>" column, a "prediction" column, and (if a reference was
@@ -9,40 +12,56 @@ available) a "reference_<col>" column -- same convention across all four
 model folders since their infer.py scripts share this format.
 
 This script reads all four models' outputs for each (language, direction)
-pair, merges them by row position, and computes per-sentence BLEU/chrF++ for
-each model's prediction against the shared gold-truth reference. Output is
-14 columns:
+pair, merges them by row position, and computes per-sentence BLEU/chrF++
+(sacrebleu) and COMET (Unbabel/wmt22-comet-da, reference-based) for each
+model's prediction against the shared gold-truth reference. Output is 18
+columns:
     source, gold_truth,
-    <TargetLang>_nllb,  BLEU_nllb,  chrf++_nllb,
-    <TargetLang>_mt5,   BLEU_mt5,   chrf++_mt5,
-    <TargetLang>_qwen,  BLEU_qwen,  chrf++_qwen,
-    <TargetLang>_llama, BLEU_llama, chrf++_llama
+    <TargetLang>_nllb,  BLEU_nllb,  chrf++_nllb,  COMET_nllb,
+    <TargetLang>_mt5,   BLEU_mt5,   chrf++_mt5,   COMET_mt5,
+    <TargetLang>_qwen,  BLEU_qwen,  chrf++_qwen,  COMET_qwen,
+    <TargetLang>_llama, BLEU_llama, chrf++_llama, COMET_llama
 
-Output layout (replaces the previous 5-column version at the same paths):
-    Maha_data/
-      bhili/{en2tgt,hi2tgt,tgt2en,tgt2hi}.csv
-      gondi/...
-      mundari/...
+IMPORTANT -- unlike BLEU/chrF++, COMET is a neural metric:
+  - Requires the `unbabel-comet` package (`pip install unbabel-comet`).
+  - Loads its own model (COMET_MODEL_NAME) and benefits heavily from a GPU
+    -- run this on a GPU allocation, not a plain CPU/login session.
+  - The first time it runs, it downloads the COMET checkpoint from Hugging
+    Face Hub, which needs internet access. If Pragya's compute nodes are
+    offline (as we've hit before with other Hub downloads), download it
+    once on a node with internet access first so it's cached locally
+    before running this on a compute node.
 
-Per-sentence BLEU/chrF++ over potentially tens of thousands of rows x 4
-models is real CPU work, so progress is flushed to disk every
-SAVE_EVERY_ROWS rows -- if the job is killed partway through, rerunning
-picks up from the last flushed row instead of starting over.
+Output layout (replaces the previous 14-column version at the same paths):
+    maha_data_2/
+      bhili/{hi2tgt,tgt2hi}.csv
+      gondi/{hi2tgt,tgt2hi}.csv
+      mundari/{hi2tgt,tgt2hi}.csv
 
-IMPORTANT: if a file from the OLD 5-column version of this script still
-exists at Maha_data/<lang>/<direction>.csv, delete it before running this
-version -- the resume logic checks the existing file's header against the
-new 14-column schema and will refuse to touch a file whose header doesn't
-match, rather than risk appending misaligned columns.
+COMET is much more expensive per row than BLEU/chrF++ (a full neural
+forward pass per example, batched via the comet library's own batching),
+so progress is flushed to disk every CHUNK_SIZE rows -- smaller than the
+old BLEU/chrF++-only SAVE_EVERY_ROWS=5000, since losing a partially-scored
+chunk on a crash is more costly now. If the job is killed partway through,
+rerunning picks up from the last flushed row instead of starting over.
+
+IMPORTANT: if a file from the OLD 14-column (no COMET) version of this
+script still exists at maha_data_2/<lang>/<direction>.csv, delete it before
+running this version -- the resume logic checks the existing file's header
+against the new 18-column schema and will refuse to touch a file whose
+header doesn't match, rather than risk appending misaligned columns.
 
 Run from the GRPO_RESEARCH root (same level as NLLB-finetune/, mt5_finetune/,
-qwen_finetune/, llama_finetune/):
+qwen_finetune/, llama_finetune/), on a GPU allocation:
     python build_maha_data.py
 """
 
+import math
 from pathlib import Path
+
 import pandas as pd
 import sacrebleu
+import torch
 
 MODELS = {
     "nllb":  "NLLB-finetune",
@@ -52,10 +71,45 @@ MODELS = {
 }
 
 LANGUAGES = ["Bhili", "Gondi", "Mundari"]
-DIRECTIONS = ["en2tgt", "hi2tgt", "tgt2en", "tgt2hi"]
+DIRECTIONS = ["hi2tgt", "tgt2hi"]   # restricted per instruction -- was all 4
 
-OUTPUT_ROOT = Path("./Maha_data")
-SAVE_EVERY_ROWS = 5000
+OUTPUT_ROOT = Path("./maha_data_2")
+CHUNK_SIZE = 1000   # rows per COMET batch + disk flush (see module docstring)
+
+COMET_MODEL_NAME = "Unbabel/wmt22-comet-da"
+COMET_BATCH_SIZE = 64
+COMET_GPUS = 1 if torch.cuda.is_available() else 0
+
+_comet_model = None
+
+
+def get_comet_model():
+    global _comet_model
+    if _comet_model is None:
+        from comet import download_model, load_from_checkpoint
+        print(f"[COMET] Downloading/loading {COMET_MODEL_NAME} ...")
+        model_path = download_model(COMET_MODEL_NAME)
+        _comet_model = load_from_checkpoint(model_path)
+        print(f"[COMET] Model loaded. gpus={COMET_GPUS}")
+    return _comet_model
+
+
+def compute_comet_scores(comet_model, sources, hyps, refs):
+    """sources/hyps/refs: same-length lists of strings, "" in refs where no
+    reference is available. Returns a list of scores (float, NaN where ref
+    was missing) aligned 1:1 with the input order."""
+    idx_map = []
+    data = []
+    for i, (s, h, r) in enumerate(zip(sources, hyps, refs)):
+        if r:
+            idx_map.append(i)
+            data.append({"src": s, "mt": h, "ref": r})
+    scores = [float("nan")] * len(sources)
+    if data:
+        output = comet_model.predict(data, batch_size=COMET_BATCH_SIZE, gpus=COMET_GPUS)
+        for idx, score in zip(idx_map, output.scores):
+            scores[idx] = score
+    return scores
 
 
 def _direction_langs(lang, direction):
@@ -164,7 +218,7 @@ def merge_one(lang, direction):
 
     columns = ["source", "gold_truth"]
     for model in models_present:
-        columns += [f"{tgt_lang}_{model}", f"BLEU_{model}", f"chrf++_{model}"]
+        columns += [f"{tgt_lang}_{model}", f"BLEU_{model}", f"chrf++_{model}", f"COMET_{model}"]
 
     out_dir = OUTPUT_ROOT / lang.lower()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -178,8 +232,8 @@ def merge_one(lang, direction):
             print(f"[ERROR] {out_path} exists with a different schema than expected.\n"
                   f"         existing: {existing_cols}\n"
                   f"         expected: {columns}\n"
-                  f"         Refusing to touch it (likely leftover from the old 5-column "
-                  f"version) -- delete this file manually and rerun.")
+                  f"         Refusing to touch it (likely leftover from the old 14-column, "
+                  f"no-COMET version) -- delete this file manually and rerun.")
             return
         n_done = len(pd.read_csv(out_path))
         print(f"[Resume] Found existing {out_path} with {n_done}/{total_rows} rows already done.")
@@ -190,27 +244,45 @@ def merge_one(lang, direction):
     if n_done > 0:
         print(f"[Resume] Continuing from row {n_done}/{total_rows}.")
 
-    buf_rows = []
-    for i in range(n_done, total_rows):
-        gold_text = str(gold.iloc[i]) if gold is not None else ""
-        row = [source.iloc[i], gold_text]
-        for model in models_present:
-            pred_text = str(preds[model].iloc[i])
-            if gold_text:
-                bleu = sacrebleu.sentence_bleu(pred_text, [gold_text]).score
-                chrfpp = sacrebleu.sentence_chrf(pred_text, [gold_text], word_order=2).score
-            else:
-                bleu = float("nan")
-                chrfpp = float("nan")
-            row += [pred_text, f"{bleu:.4f}", f"{chrfpp:.4f}"]
-        buf_rows.append(row)
+    comet_model = get_comet_model()
 
-        if len(buf_rows) >= SAVE_EVERY_ROWS:
-            _flush(buf_rows, columns, out_path)
-            print(f"  [Save] {lang}/{direction}: {i + 1}/{total_rows} rows done")
-            buf_rows = []
+    for chunk_start in range(n_done, total_rows, CHUNK_SIZE):
+        chunk_end = min(chunk_start + CHUNK_SIZE, total_rows)
+        chunk_source = source.iloc[chunk_start:chunk_end].astype(str).tolist()
+        if gold is not None:
+            chunk_gold = gold.iloc[chunk_start:chunk_end].astype(str).tolist()
+        else:
+            chunk_gold = [""] * (chunk_end - chunk_start)
 
-    _flush(buf_rows, columns, out_path)
+        chunk_preds = {
+            model: preds[model].iloc[chunk_start:chunk_end].astype(str).tolist()
+            for model in models_present
+        }
+        chunk_comet = {
+            model: compute_comet_scores(comet_model, chunk_source, chunk_preds[model], chunk_gold)
+            for model in models_present
+        }
+
+        buf_rows = []
+        for j in range(chunk_end - chunk_start):
+            gold_text = chunk_gold[j]
+            row = [chunk_source[j], gold_text]
+            for model in models_present:
+                pred_text = chunk_preds[model][j]
+                if gold_text:
+                    bleu = sacrebleu.sentence_bleu(pred_text, [gold_text]).score
+                    chrfpp = sacrebleu.sentence_chrf(pred_text, [gold_text], word_order=2).score
+                else:
+                    bleu = float("nan")
+                    chrfpp = float("nan")
+                comet_score = chunk_comet[model][j]
+                comet_str = "" if math.isnan(comet_score) else f"{comet_score:.4f}"
+                row += [pred_text, f"{bleu:.4f}", f"{chrfpp:.4f}", comet_str]
+            buf_rows.append(row)
+
+        _flush(buf_rows, columns, out_path)
+        print(f"  [Save] {lang}/{direction}: {chunk_end}/{total_rows} rows done")
+
     print(f"[Save] {out_path}  ({total_rows} rows, models: {models_present})")
 
 
