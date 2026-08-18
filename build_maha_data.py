@@ -39,8 +39,23 @@ from pathlib import Path
 # progress bar below shows up in the terminal. Must happen before pandas/
 # torch/comet get a chance to print anything.
 warnings.filterwarnings("ignore")
-logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
-logging.getLogger("lightning_fabric").setLevel(logging.ERROR)
+for _logger_name in [
+    "pytorch_lightning", "pytorch_lightning.utilities.rank_zero",
+    "pytorch_lightning.accelerators.cuda",
+    "lightning_fabric", "lightning_fabric.utilities.rank_zero",
+    "lightning.pytorch", "lightning.pytorch.utilities.rank_zero",
+]:
+    logging.getLogger(_logger_name).setLevel(logging.ERROR)
+
+# The "GPU available.../TPU.../HPU.../LOCAL_RANK..." lines specifically come
+# from pytorch_lightning's rank_zero_info() helper, which some versions
+# print directly rather than fully respecting the logger levels above --
+# patch it to a no-op so it's silenced regardless of logger-name guessing.
+try:
+    import pytorch_lightning.utilities.rank_zero as _plrz
+    _plrz.rank_zero_info = lambda *a, **k: None
+except ImportError:
+    pass
 
 import pandas as pd
 import torch
