@@ -27,8 +27,22 @@ rerunning picks up from the last flushed row instead of starting over.
 Run from the GRPO_RESEARCH root (same level as the Maha_data/ folder), on a
 single GPU allocation:
     python build_maha_data.py
+
+To run all 6 (language, direction) jobs in parallel across 6 separate
+single-GPU interactive HPC sessions instead of one sequential job, pass
+--lang/--direction to restrict a run to just one combination, e.g. launch
+each of these in its own `qsub -I ... -lngpus=1` session:
+    python build_maha_data.py --lang Bhili   --direction hi2tgt
+    python build_maha_data.py --lang Bhili   --direction tgt2hi
+    python build_maha_data.py --lang Gondi   --direction hi2tgt
+    python build_maha_data.py --lang Gondi   --direction tgt2hi
+    python build_maha_data.py --lang Mundari --direction hi2tgt
+    python build_maha_data.py --lang Mundari --direction tgt2hi
+Each process gets its own dedicated GPU from the scheduler, so there's no
+in-script multiprocessing/GPU-pinning involved at all.
 """
 
+import argparse
 import logging
 import math
 import warnings
@@ -184,10 +198,33 @@ def process_one(lang, direction):
     print(f"[Save] {out_path}  ({total_rows} rows)")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Add COMET scores to Maha_data comparison CSVs. "
+                     "Run with no arguments to process all languages/directions "
+                     "sequentially on one GPU, or pass --lang/--direction together "
+                     "to run just one combination (e.g. one per interactive job "
+                     "for 6-way parallelism across separate GPU allocations)."
+    )
+    parser.add_argument("--lang", choices=LANGUAGES, default=None,
+                         help="Only process this language (must be given with --direction).")
+    parser.add_argument("--direction", choices=DIRECTIONS, default=None,
+                         help="Only process this direction (must be given with --lang).")
+    args = parser.parse_args()
+    if bool(args.lang) != bool(args.direction):
+        parser.error("--lang and --direction must be given together (or neither, to run all 6 jobs).")
+    return args
+
+
 def main():
-    for lang in LANGUAGES:
-        for direction in DIRECTIONS:
-            process_one(lang, direction)
+    args = parse_args()
+    if args.lang and args.direction:
+        jobs = [(args.lang, args.direction)]
+    else:
+        jobs = [(lang, direction) for lang in LANGUAGES for direction in DIRECTIONS]
+
+    for lang, direction in jobs:
+        process_one(lang, direction)
     print(f"\nDone. Output under {OUTPUT_ROOT}/")
 
 
