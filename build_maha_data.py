@@ -29,8 +29,18 @@ single GPU allocation:
     python build_maha_data.py
 """
 
+import logging
 import math
+import warnings
 from pathlib import Path
+
+# Silence noisy library chatter (DataLoader worker-count warnings, Lightning's
+# GPU/TPU/HPU/LOCAL_RANK info lines, deprecation warnings) so only the tqdm
+# progress bar below shows up in the terminal. Must happen before pandas/
+# torch/comet get a chance to print anything.
+warnings.filterwarnings("ignore")
+logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
+logging.getLogger("lightning_fabric").setLevel(logging.ERROR)
 
 import pandas as pd
 import torch
