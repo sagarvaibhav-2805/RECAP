@@ -115,7 +115,8 @@ def compute_comet_scores(comet_model, sources, hyps, refs):
     scores = [float("nan")] * len(sources)
     if data:
         output = comet_model.predict(
-            data, batch_size=COMET_BATCH_SIZE, gpus=COMET_GPUS, progress_bar=False
+            data, batch_size=COMET_BATCH_SIZE, gpus=COMET_GPUS, progress_bar=False,
+            num_workers=0,
         )
         for idx, score in zip(idx_map, output.scores):
             scores[idx] = score
