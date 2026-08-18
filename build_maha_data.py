@@ -24,12 +24,21 @@ Progress is flushed to disk every CHUNK_SIZE rows, and resumes by counting
 rows already in the output file -- if the job is killed partway through,
 rerunning picks up from the last flushed row instead of starting over.
 
+There are 3 languages x 2 directions = 6 total (lang, direction) jobs. If
+more than one GPU is visible, jobs run in parallel -- one job per GPU,
+round-robin if there are more jobs than GPUs (e.g. on 4 GPUs, 2 jobs run
+twice in sequence while the other 2 GPUs each only run once). Each worker
+process loads its own COMET model instance pinned to its assigned GPU and
+writes to its own separate output file, so no cross-process coordination is
+needed. With a single GPU (or CPU), jobs run sequentially, same as before.
+
 Run from the GRPO_RESEARCH root (same level as the Maha_data/ folder), on a
 GPU allocation:
     python build_maha_data.py
 """
 
 import math
+import multiprocessing as mp
 from pathlib import Path
 
 import pandas as pd
@@ -42,7 +51,7 @@ LANGUAGES = ["Bhili", "Gondi", "Mundari"]
 DIRECTIONS = ["hi2tgt", "tgt2hi"]
 MODEL_NAMES = ["nllb", "mt5", "qwen", "llama"]
 
-CHUNK_SIZE = 1000   # rows per COMET batch + disk flush
+CHUNK_SIZE = 2000   # rows per COMET batch + disk flush
 
 COMET_MODEL_NAME = "Unbabel/wmt22-comet-da"
 COMET_BATCH_SIZE = 64
@@ -154,10 +163,35 @@ def process_one(lang, direction):
     print(f"[Save] {out_path}  ({total_rows} rows)")
 
 
+def _worker(gpu_id, lang, direction):
+    torch.cuda.set_device(gpu_id)
+    print(f"[GPU {gpu_id}] Starting {lang}/{direction}")
+    process_one(lang, direction)
+
+
 def main():
-    for lang in LANGUAGES:
-        for direction in DIRECTIONS:
+    jobs = [(lang, direction) for lang in LANGUAGES for direction in DIRECTIONS]
+    n_gpus = torch.cuda.device_count()
+    print(f"[Device] {n_gpus} GPU(s) visible, {len(jobs)} jobs total")
+
+    if n_gpus <= 1:
+        for lang, direction in jobs:
             process_one(lang, direction)
+    else:
+        # One process per job, pinned to a GPU round-robin -- jobs run
+        # concurrently instead of sequentially. "spawn" is required (not the
+        # Linux default "fork") since each worker needs its own clean CUDA
+        # context; forking a process that already touched CUDA is unsafe.
+        ctx = mp.get_context("spawn")
+        procs = []
+        for i, (lang, direction) in enumerate(jobs):
+            gpu_id = i % n_gpus
+            p = ctx.Process(target=_worker, args=(gpu_id, lang, direction))
+            p.start()
+            procs.append(p)
+        for p in procs:
+            p.join()
+
     print(f"\nDone. Output under {OUTPUT_ROOT}/")
 
 
