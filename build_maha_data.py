@@ -34,6 +34,7 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+from tqdm import tqdm
 
 INPUT_ROOT = Path("./Maha_data")
 OUTPUT_ROOT = Path("./maha_data_2")
@@ -74,7 +75,9 @@ def compute_comet_scores(comet_model, sources, hyps, refs):
             data.append({"src": s, "mt": h, "ref": r})
     scores = [float("nan")] * len(sources)
     if data:
-        output = comet_model.predict(data, batch_size=COMET_BATCH_SIZE, gpus=COMET_GPUS)
+        output = comet_model.predict(
+            data, batch_size=COMET_BATCH_SIZE, gpus=COMET_GPUS, progress_bar=False
+        )
         for idx, score in zip(idx_map, output.scores):
             scores[idx] = score
     return scores
@@ -128,6 +131,7 @@ def process_one(lang, direction):
 
     comet_model = get_comet_model()
 
+    pbar = tqdm(total=total_rows, initial=n_done, desc=f"{lang}/{direction}", unit="row")
     for chunk_start in range(n_done, total_rows, CHUNK_SIZE):
         chunk_end = min(chunk_start + CHUNK_SIZE, total_rows)
         chunk = src_df.iloc[chunk_start:chunk_end].reset_index(drop=True)
@@ -149,7 +153,8 @@ def process_one(lang, direction):
 
         file_exists = out_path.exists()
         out_chunk.to_csv(out_path, mode="a", header=not file_exists, index=False, encoding="utf-8-sig")
-        print(f"  [Save] {lang}/{direction}: {chunk_end}/{total_rows} rows done")
+        pbar.update(chunk_end - chunk_start)
+    pbar.close()
 
     print(f"[Save] {out_path}  ({total_rows} rows)")
 
