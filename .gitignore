@@ -4,6 +4,7 @@ datasets
 # train.py (nllb_diff_*_dirs) per-direction outputs + tokenizer extensions
 **/directions/
 **/tok_extensions/
+maha_data_2/
 
 # hb_pja_nllb_finetune.py / mt5_finetune.py / qwen_finetune.py / llama_finetune.py
 # per-run outputs, any language/direction
