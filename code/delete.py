@@ -1,0 +1,1 @@
+delete kar do isko
