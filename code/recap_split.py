@@ -44,7 +44,7 @@ def _source_id(lang: str, direction: str, dedup_key: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def process_one(lang: str, direction: str) -> None:
+def process_one(lang: str, direction: str, n_samples: int | None = None) -> None:
     in_path = cfg.maha_data_2_csv(lang, direction)
     if not in_path.exists():
         print(f"[Skip] {lang}/{direction}: {in_path} not found")
@@ -52,6 +52,15 @@ def process_one(lang: str, direction: str) -> None:
 
     df = pd.read_csv(in_path)
     pred_cols = {m: _find_pred_col(list(df.columns), m) for m in MODEL_NAMES}
+
+    if n_samples is not None:
+        # Quick-test mode: everything downstream (calibrate/score/mine_pairs/
+        # balance/train/eval) just reads whatever's in recap_splits/, so
+        # shrinking the dataset here is enough to make the WHOLE pipeline
+        # fast for a smoke test -- no other script needs to change.
+        df = df.sample(n=min(n_samples, len(df)), random_state=cfg.SPLIT_SEED).reset_index(drop=True)
+        print(f"[Test mode] {lang}/{direction}: sampled {len(df)} of the full dataset "
+              f"(--n_samples {n_samples})")
 
     out_dir = cfg.split_dir(lang, direction)
     manifest_path = out_dir / "manifest.csv"
@@ -144,15 +153,26 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lang", choices=cfg.LANGUAGES, default=None)
     parser.add_argument("--direction", choices=cfg.DIRECTIONS, default=None)
+    parser.add_argument(
+        "--n_samples", type=int, default=None,
+        help="Quick-test mode: randomly sample this many rows from maha_data_2 "
+             "before splitting, instead of the full dataset. Every downstream "
+             "stage then runs fast on this small split. To go back to a full "
+             "real run for the same (lang, direction), delete "
+             "recap_splits/<lang>/<direction>/ first -- otherwise the small "
+             "test split just gets skipped as 'already exists'.",
+    )
     args = parser.parse_args()
     if bool(args.lang) != bool(args.direction):
         parser.error("--lang and --direction must be given together")
+    if args.n_samples is not None and args.lang is None:
+        parser.error("--n_samples requires --lang and --direction (avoid accidentally shrinking every direction)")
 
     jobs = [(args.lang, args.direction)] if args.lang else [
         (lang, direction) for lang in cfg.LANGUAGES for direction in cfg.DIRECTIONS
     ]
     for lang, direction in jobs:
-        process_one(lang, direction)
+        process_one(lang, direction, n_samples=args.n_samples)
 
 
 if __name__ == "__main__":

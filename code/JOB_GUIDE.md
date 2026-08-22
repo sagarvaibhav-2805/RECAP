@@ -9,6 +9,9 @@ you know exactly what can run in parallel and what has to wait.
 
 Every command below is copy-pasteable from `RECAP/code/`.
 
+**Before committing to any of this on real HPC time**, smoke-test the whole
+pipeline on a tiny slice of data first -- see §14.
+
 ---
 
 ## 0. Dependency graph (the whole thing, at a glance)
@@ -379,3 +382,94 @@ runnable `--experiment` names yet -- see the "NOT YET WIRED" comments in
 `config.py`. Only the 8-condition main matrix and 6-step
 preference-construction ablation (14 experiments total, all covered above)
 are currently runnable.
+
+---
+
+## 14. Smoke-testing on a small slice of data first
+
+Don't launch 78 real GPU jobs against the full ~200K-row datasets without
+first checking the pipeline actually runs end-to-end. `recap_split.py`
+supports a `--n_samples N` flag that randomly samples N rows from
+`maha_data_2` **before** splitting -- every downstream stage (calibrate,
+score, mine_pairs, balance_pairs, train, evaluate) just reads whatever ends
+up in `recap_splits/<lang>/<direction>/`, so shrinking the input at Stage 1
+is enough to make the entire pipeline fast, with zero changes anywhere else.
+
+```bash
+# One direction, 200 rows instead of ~200K:
+python recap_split.py --lang Bhili --direction hi2tgt --n_samples 200
+python recap_calibrate.py --lang Bhili --direction hi2tgt
+python recap_score.py --lang Bhili --direction hi2tgt
+python recap_mine_pairs.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+python recap_balance_pairs.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+python recap_evaluate.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+```
+
+Notes:
+
+- `--n_samples` requires `--lang`/`--direction` (no bulk/loop-all mode) --
+  this is deliberate, so you can't accidentally shrink every direction's
+  real data at once.
+- The 80/10/10 split still applies to the sampled rows, so `--n_samples 200`
+  gives ~160/20/20 train/val/test -- small enough that DPO training finishes
+  in minutes, not hours, and you can quickly check nothing crashes, the
+  pre-flight checks pass, and the eval report looks sane.
+- **Before a real run for the same `(lang, direction)`**, delete the test
+  output first: `rm -rf recap_splits/<lang>/<direction>/` (and anything
+  downstream that got built from it: `recap_calib`, `recap_rewards`,
+  `recap_pairs`, `recap_dpo`/`recap_grpo`/`recap_ppo`, `recap_eval` for that
+  direction) -- otherwise every later stage sees `manifest.csv` /
+  `run_manifest.json` already there and skips as "already done," silently
+  leaving you with the tiny test split instead of the real one.
+- GRPO/PPO don't need a separate small-data flag for smoke-testing -- point
+  `cfg.GRPO_SETTINGS.num_updates` / `cfg.PPO_SETTINGS.num_updates` down
+  temporarily (e.g. 10) in `config.py` if you want a fast end-to-end check
+  of those too, alongside the small `--n_samples` split.
+
+---
+
+## 15. Switching from a smoke test to the real full-data run
+
+Once the small `--n_samples` test above looks sane, move to the real run for
+that same `(lang, direction)`:
+
+1. **Delete that direction's test output** -- everything built from the
+   small split has to go, or every stage below will just see its manifest/
+   run_manifest already there and skip as "already done," silently leaving
+   you stuck on the tiny test data:
+
+   ```bash
+   rm -rf recap_splits/bhili/hi2tgt
+   rm -rf recap_calib/bhili/hi2tgt
+   rm -rf recap_rewards/bhili/hi2tgt
+   rm -rf recap_pairs/bhili/hi2tgt
+   rm -rf recap_dpo/bhili/hi2tgt
+   rm -rf recap_grpo/bhili/hi2tgt
+   rm -rf recap_ppo/bhili/hi2tgt
+   rm -rf recap_eval/bhili/hi2tgt
+   ```
+
+   (swap in whichever `<lang>/<direction>` you tested with.)
+
+2. **If you temporarily lowered `num_updates`** in `config.py` for a GRPO/PPO
+   smoke test (§14's last bullet), set it back to the real value (2000 by
+   default) before continuing -- otherwise the real run also stops after
+   just a few updates.
+
+3. **Rerun without `--n_samples`** -- this now processes the full dataset,
+   and every stage after it (Groups B-E onward) runs exactly as documented
+   in §2-§10 above:
+
+   ```bash
+   python recap_split.py --lang Bhili --direction hi2tgt
+   python recap_calibrate.py --lang Bhili --direction hi2tgt
+   python recap_score.py --lang Bhili --direction hi2tgt
+   python recap_mine_pairs.py --lang Bhili --direction hi2tgt
+   python recap_balance_pairs.py --lang Bhili --direction hi2tgt
+   # ... then Groups B-E training commands as usual
+   ```
+
+Directions you never touched with `--n_samples` don't need any of this --
+they were never shrunk, so their split is already full-size and ready to go
+straight into Groups B-E.
