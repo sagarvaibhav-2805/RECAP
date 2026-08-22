@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -m 15 -o /dev/null -w \"%{http_code}\\\\n\" http://127.0.0.1:8000/api/system)",
+      "Bash(curl -s http://127.0.0.1:8000/api/system)"
+    ]
+  }
+}
