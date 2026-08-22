@@ -128,6 +128,7 @@ ablation_quality_plus_rep, ablation_quality_plus_len, ablation_full_reward,
 ablation_full_reward_margin, ablation_full_recap`.
 
 ```bash
+# --- Bhili / hi2tgt ---
 python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_raw
 python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_quality_only
 python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_no_confidence
@@ -138,12 +139,71 @@ python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_
 python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward
 python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward_margin
 python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_recap
+
+# --- Bhili / tgt2hi ---
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_raw
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_quality_only
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_no_confidence
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment recap_dpo
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_only
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_plus_rep
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_plus_len
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_reward
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_reward_margin
+python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_recap
+
+# --- Gondi / hi2tgt ---
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_raw
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_quality_only
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_no_confidence
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment recap_dpo
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_only
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_plus_rep
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_plus_len
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_reward
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_reward_margin
+python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_recap
+
+# --- Gondi / tgt2hi ---
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_raw
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_quality_only
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_no_confidence
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment recap_dpo
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_only
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_plus_rep
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_plus_len
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_reward
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_reward_margin
+python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_recap
+
+# --- Mundari / hi2tgt ---
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_raw
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_quality_only
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_no_confidence
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment recap_dpo
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_only
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_plus_rep
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_plus_len
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_reward
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_reward_margin
+python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_recap
+
+# --- Mundari / tgt2hi ---
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_raw
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_quality_only
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_no_confidence
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment recap_dpo
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_only
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_plus_rep
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_plus_len
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_reward
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_reward_margin
+python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_recap
 ```
 
-...repeat with `--direction tgt2hi`, then `--lang Gondi`/`Mundari` for both
-directions — same 10 lines, 6 times, one line = one job. **Each line above is
-its own single-GPU job** (matches the `qsub -I ... -lngpus=1` pattern used
-elsewhere in this project — see §6 for wrapping these as batch jobs).
+All 60 lines above, one line = one job. **Each line is its own single-GPU
+job** (matches the `qsub -I ... -lngpus=1` pattern used elsewhere in this
+project — see §6 for wrapping these as batch jobs).
 
 Each is independently resumable (see §7) if a job dies mid-training, so it's
 safe to just resubmit the exact same line.
