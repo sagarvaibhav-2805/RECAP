@@ -162,6 +162,34 @@ def generate_batch(model, tokenizer, sources: list[str], inference_config, batch
     return outputs
 
 
+def save_training_state_meta(path: Path, step: int, extra: dict | None = None) -> None:
+    """Small resume-metadata JSON (loop step counter, best-so-far composite)
+    for hand-rolled training loops (GRPO, classic-API PPO) that don't get HF
+    Trainer's built-in resume_from_checkpoint. Pair with
+    accelerator.save_state(path)/load_state(path) for the actual model +
+    optimizer + RNG weights -- that's the DDP-safe way to checkpoint those,
+    accelerate handles the unwrapping/gathering itself."""
+    if not is_main_process():
+        return
+    path.mkdir(parents=True, exist_ok=True)
+    state = {"step": step}
+    if extra:
+        state.update(extra)
+    with open(path / "training_state.json", "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, default=str)
+
+
+def load_training_state_meta(path: Path) -> dict[str, Any] | None:
+    """Returns the saved {'step': ..., ...} dict if a resumable checkpoint
+    exists at path, else None -- callers use the None case to mean "start
+    fresh from update 0"."""
+    state_file = path / "training_state.json"
+    if not state_file.exists():
+        return None
+    with open(state_file, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def save_run_manifest(path: Path, resolved_config: dict[str, Any], seed: int, extra: dict | None = None) -> None:
     """Writes run_manifest.json next to a checkpoint: everything needed to
     retrace a reported number back to an exact reproducible run."""

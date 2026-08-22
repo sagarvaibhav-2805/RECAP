@@ -44,8 +44,13 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
         raise ValueError(f"{experiment} is not a PPO experiment (trainer={exp.trainer})")
 
     checkpoint_dir = cfg.checkpoint_dir(cfg.PPO_ROOT, lang, direction, experiment, seed)
-    if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
-        print(f"[Skip] {lang}/{direction}/{experiment}/seed_{seed}: checkpoint already exists")
+    # Completion is judged by run_manifest.json (written only at the very end
+    # of a successful run), NOT by checkpoint_dir having files -- a resumed
+    # run can have a partial best-checkpoint saved there already while
+    # training is still genuinely in progress (see resume logic below).
+    manifest_path = cfg.run_manifest_path(cfg.PPO_ROOT, lang, direction, experiment, seed)
+    if manifest_path.exists():
+        print(f"[Skip] {lang}/{direction}/{experiment}/seed_{seed}: already completed (manifest exists)")
         return
 
     train_path = cfg.split_dir(lang, direction) / "train.csv"
@@ -95,9 +100,25 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
     val_df = pd.read_csv(cfg.split_dir(lang, direction) / "val.csv")
     reward_engine = RewardEngine.load(calib_path, reward_config=cfg.REWARD_PRESETS["recap_dpo"])
     device = ppo_trainer.accelerator.device
-    best_composite = float("-inf")
 
-    for update in range(settings.num_updates):
+    # Resume support -- same idiom as recap_train_grpo.py: accelerate-native
+    # save_state()/load_state() for the model+optimizer+RNG (PPOTrainer
+    # already manages its own Accelerator, so we reuse it rather than
+    # constructing a second one), plus a small metadata JSON for the loop
+    # step counter and best-so-far validation composite.
+    latest_state_dir = checkpoint_dir.parent / "latest_state"
+    resume_meta = recap_utils.load_training_state_meta(latest_state_dir)
+    start_update = 0
+    best_composite = float("-inf")
+    if resume_meta is not None:
+        ppo_trainer.accelerator.load_state(str(latest_state_dir / "accelerate"))
+        start_update = resume_meta["step"] + 1
+        best_composite = resume_meta.get("best_composite", float("-inf"))
+        if recap_utils.is_main_process():
+            print(f"[Resume] loaded PPO state from {latest_state_dir}, "
+                  f"resuming at update={start_update} (best_composite={best_composite:.4f})")
+
+    for update in range(start_update, settings.num_updates):
         # Rank-aware sampling -- see recap_train_grpo.py for why: without the
         # process_index offset, every DDP rank samples the identical batch.
         rank_seed = seed + update * 1000 + ppo_trainer.accelerator.process_index
@@ -166,12 +187,18 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
                     ppo_trainer.model.save_pretrained(checkpoint_dir)
                     tokenizer.save_pretrained(checkpoint_dir)
 
+        if update % settings.save_steps == 0 and update > 0:
+            # Periodic RESUME checkpoint -- separate from checkpoint_dir
+            # (best-by-validation only). Called by every rank; accelerate
+            # coordinates the actual save internally.
+            ppo_trainer.accelerator.save_state(str(latest_state_dir / "accelerate"))
+            recap_utils.save_training_state_meta(latest_state_dir, update, extra={"best_composite": best_composite})
+
     resolved_config = {
         "lang": lang, "direction": direction, "experiment": experiment, "seed": seed,
         "sft_checkpoint": sft_checkpoint, "ppo_settings": asdict(settings),
         "reward_preset": "recap_dpo",
     }
-    manifest_path = cfg.run_manifest_path(cfg.PPO_ROOT, lang, direction, experiment, seed)
     recap_utils.save_run_manifest(
         manifest_path, resolved_config, seed, extra={"best_validation_composite": best_composite},
     )
@@ -180,6 +207,9 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
             manifest_check = recap_checks.check_manifest_hashed(json.load(f))
         if not manifest_check.ok:
             raise recap_checks.CheckFailure(f"{lang}/{direction}/{experiment} manifest_hashed: {manifest_check.message}")
+        if latest_state_dir.exists():
+            import shutil
+            shutil.rmtree(latest_state_dir)
     print(f"[Done] {lang}/{direction}/{experiment}/seed_{seed} -> {checkpoint_dir}")
 
 

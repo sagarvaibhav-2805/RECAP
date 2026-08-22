@@ -120,8 +120,22 @@ def figure_3_delta_heatmap(experiment: str = "recap_dpo", seed: int = cfg.SEED) 
         return
 
     df = pd.DataFrame(rows).set_index("direction")
+
+    # Anchor the colormap at zero with a symmetric range, rather than
+    # imshow's default auto min/max -- deltas that are all roughly-equal and
+    # small (e.g. three ~+0.05 improvements) can differ from each other by
+    # nothing more than float noise (0.35-0.30 != 0.55-0.50 in float64), and
+    # an auto-scaled colormap would stretch that machine-epsilon-level noise
+    # across the full red-to-green range, making genuinely-similar positive
+    # deltas look like one metric regressed. Centering at 0 makes "no color
+    # contrast" mean "no real difference," which is the correct reading.
+    from matplotlib.colors import TwoSlopeNorm
+
+    abs_max = max(abs(df.values.min()), abs(df.values.max()), 1e-6)
+    norm = TwoSlopeNorm(vmin=-abs_max, vcenter=0.0, vmax=abs_max)
+
     fig, ax = plt.subplots(figsize=(5, 0.6 * len(df) + 1))
-    im = ax.imshow(df.values, cmap="RdYlGn", aspect="auto")
+    im = ax.imshow(df.values, cmap="RdYlGn", aspect="auto", norm=norm)
     ax.set_xticks(range(len(df.columns)))
     ax.set_xticklabels(df.columns)
     ax.set_yticks(range(len(df.index)))

@@ -72,8 +72,13 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
         raise ValueError(f"{experiment} is not a GRPO experiment (trainer={exp.trainer})")
 
     checkpoint_dir = cfg.checkpoint_dir(cfg.GRPO_ROOT, lang, direction, experiment, seed)
-    if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
-        print(f"[Skip] {lang}/{direction}/{experiment}/seed_{seed}: checkpoint already exists")
+    # Completion is judged by run_manifest.json (written only at the very end
+    # of a successful run), NOT by checkpoint_dir having files -- a resumed
+    # run can have a partial best-checkpoint saved there already while
+    # training is still genuinely in progress (see resume logic below).
+    manifest_path = cfg.run_manifest_path(cfg.GRPO_ROOT, lang, direction, experiment, seed)
+    if manifest_path.exists():
+        print(f"[Skip] {lang}/{direction}/{experiment}/seed_{seed}: already completed (manifest exists)")
         return
 
     train_path = cfg.split_dir(lang, direction) / "train.csv"
@@ -122,9 +127,25 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
     reward_engine = RewardEngine.load(calib_path, reward_config=reward_config)
 
     val_df = pd.read_csv(cfg.split_dir(lang, direction) / "val.csv")
-    best_composite = float("-inf")
 
-    for update in range(settings.num_updates):
+    # Resume support: a killed job (walltime, preemption, crash) leaves
+    # latest_state/ with an accelerate-native model+optimizer+RNG snapshot
+    # plus a small metadata JSON (loop step, best-so-far composite). If
+    # present, pick the loop back up from there instead of restarting from
+    # init_checkpoint and losing everything trained so far.
+    latest_state_dir = checkpoint_dir.parent / "latest_state"
+    resume_meta = recap_utils.load_training_state_meta(latest_state_dir)
+    start_update = 0
+    best_composite = float("-inf")
+    if resume_meta is not None:
+        accelerator.load_state(str(latest_state_dir / "accelerate"))
+        start_update = resume_meta["step"] + 1
+        best_composite = resume_meta.get("best_composite", float("-inf"))
+        if recap_utils.is_main_process():
+            print(f"[Resume] loaded GRPO state from {latest_state_dir}, "
+                  f"resuming at update={start_update} (best_composite={best_composite:.4f})")
+
+    for update in range(start_update, settings.num_updates):
         # Rank-aware sampling: offset by accelerator.process_index so DDP
         # ranks see DIFFERENT sources each step instead of all redoing the
         # same identical batch (which would waste every extra GPU).
@@ -248,13 +269,22 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
                         unwrapped.save_pretrained(checkpoint_dir)
                         tokenizer.save_pretrained(checkpoint_dir)
 
+        if update % settings.save_steps == 0 and update > 0:
+            # Periodic RESUME checkpoint -- separate from checkpoint_dir
+            # (which only ever holds the best-by-validation model). Saved
+            # via accelerate's own save_state so DDP-wrapped model/optimizer/
+            # RNG state round-trip correctly; called by every rank (accelerate
+            # coordinates this internally, unlike our own is_main_process-gated
+            # saves above).
+            accelerator.save_state(str(latest_state_dir / "accelerate"))
+            recap_utils.save_training_state_meta(latest_state_dir, update, extra={"best_composite": best_composite})
+
     recap_utils.wait_for_everyone()
     resolved_config = {
         "lang": lang, "direction": direction, "experiment": experiment, "seed": seed,
         "init_checkpoint": init_checkpoint, "grpo_settings": asdict(settings),
         "reward_preset": "recap_dpo",
     }
-    manifest_path = cfg.run_manifest_path(cfg.GRPO_ROOT, lang, direction, experiment, seed)
     recap_utils.save_run_manifest(
         manifest_path, resolved_config, seed, extra={"best_validation_composite": best_composite},
     )
@@ -263,6 +293,12 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
             manifest_check = recap_checks.check_manifest_hashed(json.load(f))
         if not manifest_check.ok:
             raise recap_checks.CheckFailure(f"{lang}/{direction}/{experiment} manifest_hashed: {manifest_check.message}")
+        # Run genuinely finished (manifest written) -- the resume snapshot is
+        # no longer needed and can be sizeable (full optimizer state), so
+        # don't leave it around indefinitely.
+        if latest_state_dir.exists():
+            import shutil
+            shutil.rmtree(latest_state_dir)
     print(f"[Done] {lang}/{direction}/{experiment}/seed_{seed} -> {checkpoint_dir}")
 
 

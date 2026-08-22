@@ -114,8 +114,13 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
         raise ValueError(f"{experiment} is not a DPO experiment (trainer={exp.trainer})")
 
     checkpoint_dir = cfg.checkpoint_dir(cfg.DPO_ROOT, lang, direction, experiment, seed)
-    if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
-        print(f"[Skip] {lang}/{direction}/{experiment}/seed_{seed}: checkpoint already exists")
+    # Completion is judged by run_manifest.json (written only at the very end
+    # of a successful run), NOT by checkpoint_dir having files -- a resumed
+    # run can have a partial best-checkpoint saved there already while
+    # training is still genuinely in progress (see resume logic below).
+    manifest_path = cfg.run_manifest_path(cfg.DPO_ROOT, lang, direction, experiment, seed)
+    if manifest_path.exists():
+        print(f"[Skip] {lang}/{direction}/{experiment}/seed_{seed}: already completed (manifest exists)")
         return
 
     pairs_path = cfg.pairs_experiment_dir(lang, direction, experiment) / "pairs_balanced.csv"
@@ -173,6 +178,37 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
         calib_engine, checkpoint_dir, tokenizer, eval_steps=settings.eval_steps,
     )
 
+    # Resume support, part 1: if an earlier run of this exact job got killed
+    # (walltime limit, preemption, crash) after HF's own step-checkpointing
+    # had already saved progress under trainer_state/, pick up training from
+    # there instead of restarting from the SFT checkpoint and burning the
+    # compute already spent.
+    trainer_state_dir = checkpoint_dir.parent / "trainer_state"
+    resume_from = None
+    if trainer_state_dir.exists():
+        existing = sorted(
+            trainer_state_dir.glob("checkpoint-*"),
+            key=lambda p: int(p.name.rsplit("-", 1)[-1]),
+        )
+        if existing:
+            resume_from = str(existing[-1])
+            print(f"[Resume] found {resume_from}, resuming DPO training from there")
+
+    # Resume support, part 2: the *validation-best* checkpoint (checkpoint_dir,
+    # separate from trainer_state/) is what actually gets deployed. If a
+    # previous run already found and saved a best-so-far model there before
+    # dying, seed best_composite from it -- otherwise the callback would
+    # start comparing against -inf again and could overwrite a genuinely
+    # better earlier checkpoint with a worse one from right after resuming.
+    if resume_from is not None and checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
+        if recap_utils.is_main_process():
+            from transformers import AutoModelForSeq2SeqLM as _M
+            prior_best_model = _M.from_pretrained(checkpoint_dir)
+            val_callback.evaluate(prior_best_model, step="resumed-prior-best")
+            print(f"[Resume] seeded best_composite={val_callback.best_composite:.4f} from prior run's saved checkpoint")
+            del prior_best_model
+        recap_utils.wait_for_everyone()
+
     trainer = DPOTrainer(
         model=policy_model,
         ref_model=ref_model,
@@ -182,7 +218,7 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
     )
     trainer.add_callback(_make_trl_callback(val_callback))
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_from)
 
     # If eval_steps never lined up with a step boundary (e.g. very short
     # runs, or a small ablation preset with few pairs), make sure at least
@@ -204,7 +240,6 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
         "dpo_settings": asdict(settings),
         "sft_checkpoint": str(sft_checkpoint),
     }
-    manifest_path = cfg.run_manifest_path(cfg.DPO_ROOT, lang, direction, experiment, seed)
     recap_utils.save_run_manifest(
         manifest_path, resolved_config, seed,
         extra={"best_validation_composite": val_callback.best_composite, "best_step": val_callback.best_step,
