@@ -230,6 +230,16 @@ class DPOSettings:
 
 DPO_SETTINGS = DPOSettings()
 
+# Smoke-test settings: same shape, small enough to finish in minutes on a
+# tiny (--n_samples) split. A named, separate object -- not a hand-edit of
+# DPO_SETTINGS above -- so there's nothing to remember to revert before a
+# real run. Selected via --smoke_test on recap_train_dpo.py. eval_steps/
+# save_steps are lowered so the periodic-validation and resume-checkpoint
+# code paths actually get exercised even on a run this short.
+DPO_SETTINGS_SMOKE_TEST = DPOSettings(
+    num_train_epochs=1, eval_steps=5, save_steps=5,
+)
+
 # ---------------------------------------------------------------------------
 # 8. GRPO settings (Stage 7 -- scratch implementation)
 # ---------------------------------------------------------------------------
@@ -252,6 +262,16 @@ class GRPOSettings:
 
 
 GRPO_SETTINGS = GRPOSettings()
+
+# Smoke-test settings: same shape as GRPO_SETTINGS, small enough to finish in
+# minutes. Selected via --smoke_test on recap_train_grpo.py -- num_updates
+# governs the loop length regardless of dataset size, so without a separate
+# small value here even a tiny --n_samples split would still run the full
+# 2000-update loop. eval_steps/save_steps lowered so the periodic-validation
+# and resume-checkpoint code paths still get exercised.
+GRPO_SETTINGS_SMOKE_TEST = GRPOSettings(
+    num_updates=10, eval_steps=5, save_steps=5, source_subset_size=200,
+)
 
 # NOT YET WIRED -- deferred to a separate scope. These lists (and the 6 other
 # targeted ablations from IMPLEMENTATION_PLAN.md Central-Config #10:
@@ -289,6 +309,14 @@ class PPOSettings:
 
 
 PPO_SETTINGS = PPOSettings()
+
+# Smoke-test settings: same shape as PPO_SETTINGS, small enough to finish in
+# minutes. Selected via --smoke_test on recap_train_ppo.py. batch_size/
+# mini_batch_size also lowered since a 200-row --n_samples split may not
+# have 32 rows to sample per PPO update.
+PPO_SETTINGS_SMOKE_TEST = PPOSettings(
+    num_updates=10, eval_steps=5, save_steps=5, batch_size=8, mini_batch_size=2,
+)
 
 # ---------------------------------------------------------------------------
 # 10. Experiment registry -- main matrix + targeted ablations

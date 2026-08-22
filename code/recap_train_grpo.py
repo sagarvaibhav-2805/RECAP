@@ -63,7 +63,7 @@ def _batch_logprobs(model, tokenizer, sources: list[str], targets: list[str], de
     return (gathered * token_mask).sum(dim=1)
 
 
-def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
+def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_test: bool = False) -> None:
     import torch
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
@@ -109,7 +109,9 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
     if not ref_frozen_check.ok:
         raise recap_checks.CheckFailure(f"{lang}/{direction}/{experiment} reference_frozen: {ref_frozen_check.message}")
 
-    settings = cfg.GRPO_SETTINGS
+    settings = cfg.GRPO_SETTINGS_SMOKE_TEST if smoke_test else cfg.GRPO_SETTINGS
+    if smoke_test:
+        print(f"[Smoke test] {lang}/{direction}/{experiment}: using GRPO_SETTINGS_SMOKE_TEST")
     optimizer = torch.optim.AdamW(policy.parameters(), lr=settings.learning_rate)
     policy, optimizer = accelerator.prepare(policy, optimizer)
     ref_model = ref_model.to(accelerator.device)  # frozen -- never accelerator.prepare()'d
@@ -308,8 +310,11 @@ def main() -> None:
     parser.add_argument("--direction", choices=cfg.DIRECTIONS, required=True)
     parser.add_argument("--experiment", choices=[n for n, e in cfg.EXPERIMENTS.items() if e.trainer == "grpo"], required=True)
     parser.add_argument("--seed", type=int, default=cfg.SEED)
+    parser.add_argument("--smoke_test", action="store_true",
+                         help="Use GRPO_SETTINGS_SMOKE_TEST (config.py) instead of GRPO_SETTINGS -- "
+                              "for a quick end-to-end check on a small --n_samples split.")
     args = parser.parse_args()
-    process_one(args.lang, args.direction, args.experiment, args.seed)
+    process_one(args.lang, args.direction, args.experiment, args.seed, smoke_test=args.smoke_test)
 
 
 if __name__ == "__main__":

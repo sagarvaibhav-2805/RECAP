@@ -31,7 +31,7 @@ import recap_utils
 from recap_reward import RewardEngine
 
 
-def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
+def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_test: bool = False) -> None:
     from datetime import timedelta
 
     import torch
@@ -72,7 +72,9 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
     if not ref_frozen_check.ok:
         raise recap_checks.CheckFailure(f"{lang}/{direction}/{experiment} reference_frozen: {ref_frozen_check.message}")
 
-    settings = cfg.PPO_SETTINGS
+    settings = cfg.PPO_SETTINGS_SMOKE_TEST if smoke_test else cfg.PPO_SETTINGS
+    if smoke_test:
+        print(f"[Smoke test] {lang}/{direction}/{experiment}: using PPO_SETTINGS_SMOKE_TEST")
     ppo_config = PPOConfig(
         learning_rate=settings.learning_rate,
         batch_size=settings.batch_size,
@@ -219,8 +221,11 @@ def main() -> None:
     parser.add_argument("--direction", choices=cfg.DIRECTIONS, required=True)
     parser.add_argument("--experiment", choices=[n for n, e in cfg.EXPERIMENTS.items() if e.trainer == "ppo"], required=True)
     parser.add_argument("--seed", type=int, default=cfg.SEED)
+    parser.add_argument("--smoke_test", action="store_true",
+                         help="Use PPO_SETTINGS_SMOKE_TEST (config.py) instead of PPO_SETTINGS -- "
+                              "for a quick end-to-end check on a small --n_samples split.")
     args = parser.parse_args()
-    process_one(args.lang, args.direction, args.experiment, args.seed)
+    process_one(args.lang, args.direction, args.experiment, args.seed, smoke_test=args.smoke_test)
 
 
 if __name__ == "__main__":

@@ -105,7 +105,7 @@ def build_dpo_dataset(pairs_path):
     return Dataset.from_pandas(df, preserve_index=False)
 
 
-def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
+def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_test: bool = False) -> None:
     from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
     from trl import DPOConfig, DPOTrainer
 
@@ -147,7 +147,9 @@ def process_one(lang: str, direction: str, experiment: str, seed: int) -> None:
 
     train_dataset = build_dpo_dataset(pairs_path)
 
-    settings = cfg.DPO_SETTINGS
+    settings = cfg.DPO_SETTINGS_SMOKE_TEST if smoke_test else cfg.DPO_SETTINGS
+    if smoke_test:
+        print(f"[Smoke test] {lang}/{direction}/{experiment}: using DPO_SETTINGS_SMOKE_TEST")
     training_args = DPOConfig(
         output_dir=str(checkpoint_dir.parent / "trainer_state"),
         beta=settings.beta,
@@ -259,8 +261,11 @@ def main() -> None:
     parser.add_argument("--direction", choices=cfg.DIRECTIONS, required=True)
     parser.add_argument("--experiment", choices=[n for n, e in cfg.EXPERIMENTS.items() if e.trainer == "dpo"], required=True)
     parser.add_argument("--seed", type=int, default=cfg.SEED)
+    parser.add_argument("--smoke_test", action="store_true",
+                         help="Use DPO_SETTINGS_SMOKE_TEST (config.py) instead of DPO_SETTINGS -- "
+                              "for a quick end-to-end check on a small --n_samples split.")
     args = parser.parse_args()
-    process_one(args.lang, args.direction, args.experiment, args.seed)
+    process_one(args.lang, args.direction, args.experiment, args.seed, smoke_test=args.smoke_test)
 
 
 if __name__ == "__main__":

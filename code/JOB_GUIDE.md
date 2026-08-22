@@ -514,6 +514,132 @@ If these finish (even a handful of updates for GRPO/PPO, per §14's
 sampling, the NCCL timeout, frozen-reference isolation — is confirmed working
 before you commit real GPU-hours to it.
 
+### 14c. Full end-to-end smoke test — every stage, every experiment/ablation, ONE direction, `torchrun`
+
+§14 only exercised one experiment (`recap_dpo`) to check the pipeline isn't
+broken. This is the thorough version: every stage, all 14 experiments/
+ablations, for a single `(lang, direction)` — so nothing about any specific
+ablation's code path (data OR the multi-GPU path) is untested before the real
+78-job run.
+
+Two things make this fast without any manual `config.py` editing or reverting:
+
+- **`--n_samples 200`** on Stage 1 (as in §14) — shrinks the dataset.
+- **`--smoke_test`** on every Stage 6/7/8 command — swaps in
+  `DPO_SETTINGS_SMOKE_TEST` / `GRPO_SETTINGS_SMOKE_TEST` /
+  `PPO_SETTINGS_SMOKE_TEST` (`config.py`) instead of the real settings
+  (`num_updates=10`, `eval_steps=5`, `save_steps=5`, etc.) — a **named,
+  separate settings object**, not a hand-edit of the real one, so there's
+  nothing to remember to revert before the real run in §15.
+
+All Stage 6/7/8 commands below also run under `torchrun --nproc_per_node=2`
+(2 A100s), so the DDP path (rank-aware sampling, NCCL timeout, resume
+snapshotting) gets exercised too — this folds §14b's multi-GPU check into
+the same pass instead of a separate one. Swap `2` for however many GPUs you
+actually intend to use per job in the real run.
+
+```bash
+export NGPUS_PER_JOB=2
+```
+
+**1. Stage 1 — split** (small sample, one direction):
+
+```bash
+python recap_split.py --lang Bhili --direction hi2tgt --n_samples 200
+```
+
+**2. Stage 2 — calibrate:**
+
+```bash
+python recap_calibrate.py --lang Bhili --direction hi2tgt
+```
+
+**3. Stage 3 — score:**
+
+```bash
+python recap_score.py --lang Bhili --direction hi2tgt
+```
+
+**4. Stage 4 — mine pairs** (no `--experiment` = loops all 10 reward-preset
+experiments for this direction automatically):
+
+```bash
+python recap_mine_pairs.py --lang Bhili --direction hi2tgt
+```
+
+**5. Stage 5 — balance pairs** (same 10, one command):
+
+```bash
+python recap_balance_pairs.py --lang Bhili --direction hi2tgt
+```
+
+**6. Stage 6 — DPO training, all 10 experiments** (each needs its own
+`--experiment`, no loop-all mode for training):
+
+```bash
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_raw --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_quality_only --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_no_confidence --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_only --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_plus_rep --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_plus_len --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward_margin --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_recap --smoke_test
+```
+
+**7. Stage 7 — GRPO, both conditions** (`recap_dpo_grpo` needs the
+`recap_dpo` run from step 6 above, already done by this point):
+
+```bash
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili --direction hi2tgt --experiment sft_grpo --smoke_test
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo_grpo --smoke_test
+```
+
+**8. Stage 8 — PPO:**
+
+```bash
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Bhili --direction hi2tgt --experiment sft_ppo --smoke_test
+```
+
+**9. Stage 9 — evaluate** (no `--experiment` = all 14, including the `sft`
+baseline needed for every delta; no `torchrun` — Stage 9 has no DDP sharding,
+see §8):
+
+```bash
+python recap_evaluate.py --lang Bhili --direction hi2tgt
+```
+
+**10. Stage 11 — reporting:**
+
+```bash
+python recap_report_tables.py
+python recap_report_plots.py
+```
+
+**11. Stage 11 — Table 10 sampling** (structural check only, real 500 is
+overkill on a 200-row test set):
+
+```bash
+python recap_sample_for_human_eval.py --experiment recap_dpo --n 20
+```
+
+**12. Clean up and switch to the real run per §15** (delete
+`recap_splits/bhili/hi2tgt`, `recap_calib/bhili/hi2tgt`,
+`recap_rewards/bhili/hi2tgt`, `recap_pairs/bhili/hi2tgt`,
+`recap_dpo/bhili/hi2tgt`, `recap_grpo/bhili/hi2tgt`, `recap_ppo/bhili/hi2tgt`,
+`recap_eval/bhili/hi2tgt`) — then just drop `--smoke_test` (and `--n_samples`
+on Stage 1) for the real commands in §3-§6. No `config.py` revert needed:
+`DPO_SETTINGS`/`GRPO_SETTINGS`/`PPO_SETTINGS` (the real ones) were never
+touched.
+
+If all of steps 1-11 finish without a `CheckFailure` (the 9 pre-flight
+checks) or an unhandled exception, every stage, every experiment/ablation,
+AND the multi-GPU `torchrun` path have all been exercised at least once — the
+remaining risk in the real 78-job run is scale (wall-clock, memory at full
+dataset size and full `num_updates`), not logic.
+
 ---
 
 ## 15. Switching from a smoke test to the real full-data run
