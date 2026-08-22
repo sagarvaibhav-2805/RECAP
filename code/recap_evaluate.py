@@ -24,6 +24,7 @@ import math
 import random
 
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 import recap_infer
@@ -69,7 +70,7 @@ def evaluate_one(lang: str, direction: str, experiment: str, seed: int) -> dict:
     translations = recap_infer.translate(sources, lang, direction, experiment=experiment)
 
     engine = RewardEngine(cfg.REWARD_PRESETS["recap_dpo"])  # config-agnostic for raw metric computation
-    raw = engine.compute_raw_metrics(sources, translations, references)
+    raw = engine.compute_raw_metrics(sources, translations, references, desc=f"{lang}/{direction}/{experiment}")
     valid_mask = [r["valid"] and math.isfinite(r["bleu"]) for r in raw]
     valid_idx = [i for i, ok in enumerate(valid_mask) if ok]
 
@@ -214,13 +215,14 @@ def main() -> None:
     ]
     experiments = [args.experiment] if args.experiment else list(cfg.EXPERIMENTS.keys())
 
+    combos = [(lang, direction, experiment) for lang, direction in lang_direction_jobs for experiment in experiments]
+    for lang, direction, experiment in tqdm(combos, desc="Evaluating", disable=len(combos) < 2):
+        deltas = compute_deltas(lang, direction, experiment, args.seed)
+        if deltas:
+            tqdm.write(f"    deltas vs SFT: "
+                       f"dBLEU={deltas['delta_bleu']:.4f} dChrF++={deltas['delta_chrf']:.4f} "
+                       f"dCOMET={deltas['delta_comet']:.4f}")
     for lang, direction in lang_direction_jobs:
-        for experiment in experiments:
-            deltas = compute_deltas(lang, direction, experiment, args.seed)
-            if deltas:
-                print(f"    deltas vs SFT: "
-                      f"dBLEU={deltas['delta_bleu']:.4f} dChrF++={deltas['delta_chrf']:.4f} "
-                      f"dCOMET={deltas['delta_comet']:.4f}")
         select_best_checkpoint(lang, direction, args.seed)
 
 

@@ -10,6 +10,8 @@ import itertools
 import math
 from typing import Any
 
+from tqdm import tqdm
+
 import config as cfg
 from recap_reward import RewardEngine
 
@@ -38,7 +40,7 @@ class PreferenceBuilder:
             (r["source_id"], r["model"]): r for r in raw_rewards_long.to_dict("records")
         }
 
-        for _, row in train_df.iterrows():
+        for _, row in tqdm(train_df.iterrows(), total=len(train_df), desc="Mining pairs"):
             source = row["source"]
             reference = row["gold_truth"]
             source_id = row["source_id"]

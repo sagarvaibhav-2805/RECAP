@@ -16,6 +16,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 
@@ -118,9 +119,9 @@ def main() -> None:
         name for name, exp in cfg.EXPERIMENTS.items() if exp.reward_preset is not None
     ]
 
-    for lang, direction in lang_direction_jobs:
-        for experiment in experiments:
-            process_one(lang, direction, experiment)
+    combos = [(lang, direction, experiment) for lang, direction in lang_direction_jobs for experiment in experiments]
+    for lang, direction, experiment in tqdm(combos, desc="Balancing pairs (all combos)", disable=len(combos) < 2):
+        process_one(lang, direction, experiment)
 
 
 if __name__ == "__main__":

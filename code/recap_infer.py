@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import pandas as pd
 
@@ -71,7 +72,8 @@ def translate(
     and (via recap_utils.generate_batch directly) training-time validation."""
     checkpoint_path = resolve_checkpoint(lang, direction, checkpoint=checkpoint, experiment=experiment)
     model, tokenizer = _load_model(checkpoint_path)
-    return recap_utils.generate_batch(model, tokenizer, sources, cfg.INFERENCE_CONFIG)
+    label = experiment or Path(checkpoint_path).name
+    return recap_utils.generate_batch(model, tokenizer, sources, cfg.INFERENCE_CONFIG, desc=f"Translating {lang}/{direction} [{label}]")
 
 
 def main() -> None:

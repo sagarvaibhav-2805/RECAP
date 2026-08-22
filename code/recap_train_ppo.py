@@ -24,6 +24,7 @@ import math
 from dataclasses import asdict
 
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 import recap_checks
@@ -120,7 +121,11 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
             print(f"[Resume] loaded PPO state from {latest_state_dir}, "
                   f"resuming at update={start_update} (best_composite={best_composite:.4f})")
 
-    for update in range(start_update, settings.num_updates):
+    progress_bar = tqdm(
+        range(start_update, settings.num_updates), initial=start_update, total=settings.num_updates,
+        desc=f"{lang}/{direction}/{experiment} PPO", disable=not recap_utils.is_main_process(),
+    )
+    for update in progress_bar:
         # Rank-aware sampling -- see recap_train_grpo.py for why: without the
         # process_index offset, every DDP rank samples the identical batch.
         rank_seed = seed + update * 1000 + ppo_trainer.accelerator.process_index
@@ -158,7 +163,7 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
         keep_idx = [i for i, s in enumerate(scored) if math.isfinite(s["reward"])]
         if not keep_idx:
             if update % 50 == 0 and recap_utils.is_main_process():
-                print(f"[{lang}/{direction}/{experiment}] update={update}: no valid completions this step, skipping")
+                tqdm.write(f"[{lang}/{direction}/{experiment}] update={update}: no valid completions this step, skipping")
             continue
 
         kept_queries = [query_tensors[i] for i in keep_idx]
@@ -167,23 +172,28 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
 
         stats = ppo_trainer.step(kept_queries, kept_responses, kept_rewards)
 
-        if update % 50 == 0 and recap_utils.is_main_process():
+        if recap_utils.is_main_process():
             mean_reward = sum(float(r) for r in kept_rewards) / len(kept_rewards)
             n_invalid = len(scored) - len(keep_idx)
-            print(f"[{lang}/{direction}/{experiment}] update={update} mean_reward={mean_reward:.4f} "
-                  f"kl={stats.get('objective/kl', float('nan')):.4f} n_invalid={n_invalid}/{len(scored)}")
+            progress_bar.set_postfix(reward=f"{mean_reward:.4f}",
+                                      kl=f"{stats.get('objective/kl', float('nan')):.4f}", n_invalid=n_invalid)
+            if update % 50 == 0:
+                tqdm.write(f"[{lang}/{direction}/{experiment}] update={update} mean_reward={mean_reward:.4f} "
+                           f"kl={stats.get('objective/kl', float('nan')):.4f} n_invalid={n_invalid}/{len(scored)}")
 
         if update % settings.eval_steps == 0 and update > 0 and recap_utils.is_main_process():
             val_translations = recap_utils.generate_batch(
                 ppo_trainer.model, tokenizer, val_df["source"].tolist(), cfg.INFERENCE_CONFIG,
+                desc=f"{lang}/{direction}/{experiment} val@{update}",
             )
             val_scored = reward_engine.compute_raw_metrics(
                 val_df["source"].tolist(), val_translations, val_df["gold_truth"].tolist(),
+                desc=f"{lang}/{direction}/{experiment} val@{update}",
             )
             valid = [s for s in val_scored if s["valid"] and math.isfinite(s["bleu"])]
             if valid:
                 composite = sum((s["bleu"] + s["chrf"] + s["comet"]) / 3.0 for s in valid) / len(valid)
-                print(f"[Eval] update={update} validation composite={composite:.4f}")
+                tqdm.write(f"[Eval] update={update} validation composite={composite:.4f}")
                 if composite > best_composite:
                     best_composite = composite
                     ppo_trainer.model.save_pretrained(checkpoint_dir)

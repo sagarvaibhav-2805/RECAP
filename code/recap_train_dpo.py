@@ -44,20 +44,22 @@ class ValidationCheckpointCallback:
     checkpoint saved is genuinely the best-on-validation one, per the paper's
     explicit "select by validation, not training loss or last step" rule."""
 
-    def __init__(self, val_sources, val_refs, reward_engine: RewardEngine, out_dir, tokenizer, eval_steps: int):
+    def __init__(self, val_sources, val_refs, reward_engine: RewardEngine, out_dir, tokenizer, eval_steps: int, label: str = "DPO"):
         self.val_sources = val_sources
         self.val_refs = val_refs
         self.reward_engine = reward_engine
         self.out_dir = out_dir
         self.tokenizer = tokenizer
         self.eval_steps = eval_steps
+        self.label = label
         self.best_composite = float("-inf")
         self.best_step = None
         self.last_result: dict = {}
 
     def evaluate(self, model, step) -> dict:
-        translations = recap_utils.generate_batch(model, self.tokenizer, self.val_sources, cfg.INFERENCE_CONFIG)
-        scored = self.reward_engine.compute_raw_metrics(self.val_sources, translations, self.val_refs)
+        desc = f"{self.label} val@{step}"
+        translations = recap_utils.generate_batch(model, self.tokenizer, self.val_sources, cfg.INFERENCE_CONFIG, desc=desc)
+        scored = self.reward_engine.compute_raw_metrics(self.val_sources, translations, self.val_refs, desc=desc)
         valid = [s for s in scored if s["valid"] and math.isfinite(s["bleu"])]
         if not valid:
             result = {"step": step, "composite": float("-inf"), "n_valid": 0}
@@ -178,6 +180,7 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
     val_callback = ValidationCheckpointCallback(
         val_df["source"].tolist(), val_df["gold_truth"].tolist(),
         calib_engine, checkpoint_dir, tokenizer, eval_steps=settings.eval_steps,
+        label=f"{lang}/{direction}/{experiment}",
     )
 
     # Resume support, part 1: if an earlier run of this exact job got killed

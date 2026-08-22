@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 import recap_checks
@@ -54,7 +55,7 @@ def process_one(lang: str, direction: str) -> None:
     # Any preset works here -- fit() ignores weights entirely, it only
     # computes descriptive stats of the raw metrics.
     engine = RewardEngine(cfg.REWARD_PRESETS["recap_dpo"])
-    engine.fit(long_df)
+    engine.fit(long_df, desc=f"{lang}/{direction}")
     engine.serialize(out_path)
 
     check = recap_checks.check_calibration_stats_finite(lang, direction)
@@ -80,7 +81,7 @@ def main() -> None:
     jobs = [(args.lang, args.direction)] if args.lang else [
         (lang, direction) for lang in cfg.LANGUAGES for direction in cfg.DIRECTIONS
     ]
-    for lang, direction in jobs:
+    for lang, direction in tqdm(jobs, desc="Calibrating (all combos)", disable=len(jobs) < 2):
         process_one(lang, direction)
 
 

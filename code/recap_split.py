@@ -14,6 +14,7 @@ import argparse
 import hashlib
 
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 import recap_checks
@@ -71,7 +72,7 @@ def process_one(lang: str, direction: str, n_samples: int | None = None) -> None
     # -- validation: reject-and-log, never silently drop -----------------
     rejects = []
     valid_rows = []
-    for idx, row in df.iterrows():
+    for idx, row in tqdm(df.iterrows(), total=len(df), desc=f"Validating {lang}/{direction}"):
         reasons = []
         if pd.isna(row.get("source")) or not str(row.get("source")).strip():
             reasons.append("missing source")
@@ -171,7 +172,7 @@ def main() -> None:
     jobs = [(args.lang, args.direction)] if args.lang else [
         (lang, direction) for lang in cfg.LANGUAGES for direction in cfg.DIRECTIONS
     ]
-    for lang, direction in jobs:
+    for lang, direction in tqdm(jobs, desc="Splitting (all combos)", disable=len(jobs) < 2):
         process_one(lang, direction, n_samples=args.n_samples)
 
 

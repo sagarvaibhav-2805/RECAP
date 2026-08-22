@@ -16,9 +16,12 @@ from __future__ import annotations
 import argparse
 
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 from recap_reward import RewardEngine
+
+TQDM_MIN_ITEMS = 200  # match recap_reward.py -- don't bother for small smoke-test runs
 
 
 def _lang_prefix(columns: list[str]) -> str:
@@ -58,9 +61,9 @@ def process_one(lang: str, direction: str) -> None:
         ]
         raw = engine.compute_raw_metrics(
             all_df["source"].tolist(), all_df[pred_col].tolist(), all_df["gold_truth"].tolist(),
-            precomputed=precomputed,
+            precomputed=precomputed, desc=f"{lang}/{direction} [{model}]",
         )
-        for i, r in enumerate(raw):
+        for i, r in enumerate(tqdm(raw, desc=f"Assembling {model} rows", disable=len(raw) < TQDM_MIN_ITEMS)):
             rows.append({
                 "source_id": all_df["source_id"].iloc[i],
                 "split": all_df["_split"].iloc[i],
@@ -85,7 +88,7 @@ def main() -> None:
     jobs = [(args.lang, args.direction)] if args.lang else [
         (lang, direction) for lang in cfg.LANGUAGES for direction in cfg.DIRECTIONS
     ]
-    for lang, direction in jobs:
+    for lang, direction in tqdm(jobs, desc="Scoring (all combos)", disable=len(jobs) < 2):
         process_one(lang, direction)
 
 

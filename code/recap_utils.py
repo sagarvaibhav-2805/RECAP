@@ -16,6 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from tqdm import tqdm
+
+# Below this many rows, a tqdm bar is more noise than signal (matches
+# recap_reward.py's TQDM_MIN_ITEMS) -- validation/eval calls on a full
+# dataset are comfortably above this and show real progress.
+TQDM_MIN_ITEMS = 200
+
 
 def set_seed(seed: int, rank: int = 0) -> None:
     """Seeds Python/NumPy/Torch (CPU+CUDA) and transformers. rank offsets the
@@ -133,7 +140,9 @@ def config_hash(resolved_config: dict[str, Any]) -> str:
     return hashlib.sha256(blob).hexdigest()[:16]
 
 
-def generate_batch(model, tokenizer, sources: list[str], inference_config, batch_size: int = 32) -> list[str]:
+def generate_batch(
+    model, tokenizer, sources: list[str], inference_config, batch_size: int = 32, desc: str = "Generating",
+) -> list[str]:
     """One shared seq2seq generation routine, used by recap_infer.py AND the
     validation callbacks inside recap_train_dpo.py / recap_train_grpo.py /
     recap_train_ppo.py -- so "what we evaluate" and "what we deploy" (and
@@ -144,9 +153,12 @@ def generate_batch(model, tokenizer, sources: list[str], inference_config, batch
     outputs: list[str] = []
     was_training = model.training  # restore afterward -- callers may invoke this mid-training-loop
     model.eval()
+    show_progress = len(sources) >= TQDM_MIN_ITEMS and is_main_process()
     try:
         with torch.no_grad():
-            for i in range(0, len(sources), batch_size):
+            batch_starts = range(0, len(sources), batch_size)
+            for i in tqdm(batch_starts, desc=desc, disable=not show_progress,
+                          total=(len(sources) + batch_size - 1) // batch_size):
                 batch = sources[i:i + batch_size]
                 inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True).to(device)
                 gen_kwargs = {"max_new_tokens": inference_config.max_new_tokens}

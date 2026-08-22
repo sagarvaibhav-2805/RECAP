@@ -36,6 +36,7 @@ import math
 from dataclasses import asdict
 
 import pandas as pd
+from tqdm import tqdm
 
 import config as cfg
 import recap_checks
@@ -147,7 +148,11 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
             print(f"[Resume] loaded GRPO state from {latest_state_dir}, "
                   f"resuming at update={start_update} (best_composite={best_composite:.4f})")
 
-    for update in range(start_update, settings.num_updates):
+    progress_bar = tqdm(
+        range(start_update, settings.num_updates), initial=start_update, total=settings.num_updates,
+        desc=f"{lang}/{direction}/{experiment} GRPO", disable=not recap_utils.is_main_process(),
+    )
+    for update in progress_bar:
         # Rank-aware sampling: offset by accelerator.process_index so DDP
         # ranks see DIFFERENT sources each step instead of all redoing the
         # same identical batch (which would waste every extra GPU).
@@ -212,8 +217,8 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
         keep_idx = [i for i in range(len(scored)) if valid_mask[i] and advantages[i] != 0.0]
         if not keep_idx:
             if update % 50 == 0 and recap_utils.is_main_process():
-                print(f"[{lang}/{direction}/{experiment}] update={update}: no valid non-zero-advantage "
-                      f"completions this step, skipping update")
+                tqdm.write(f"[{lang}/{direction}/{experiment}] update={update}: no valid non-zero-advantage "
+                           f"completions this step, skipping update")
             continue
 
         kept_sources = [all_sources[i] for i in keep_idx]
@@ -244,13 +249,16 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
         optimizer.step()
         optimizer.zero_grad()
 
-        if update % 50 == 0 and recap_utils.is_main_process():
+        if recap_utils.is_main_process():
             valid_rewards = [scored[i]["reward"] for i in range(len(scored)) if valid_mask[i]]
             mean_reward = sum(valid_rewards) / len(valid_rewards) if valid_rewards else float("nan")
             n_invalid = len(scored) - sum(valid_mask)
-            print(f"[{lang}/{direction}/{experiment}] update={update} loss={loss.item():.4f} "
-                  f"policy_loss={policy_loss.item():.4f} kl={kl.item():.4f} "
-                  f"mean_reward={mean_reward:.4f} n_invalid={n_invalid}/{len(scored)}")
+            progress_bar.set_postfix(loss=f"{loss.item():.4f}", kl=f"{kl.item():.4f}",
+                                      reward=f"{mean_reward:.4f}", n_invalid=n_invalid)
+            if update % 50 == 0:
+                tqdm.write(f"[{lang}/{direction}/{experiment}] update={update} loss={loss.item():.4f} "
+                           f"policy_loss={policy_loss.item():.4f} kl={kl.item():.4f} "
+                           f"mean_reward={mean_reward:.4f} n_invalid={n_invalid}/{len(scored)}")
 
         if update % settings.eval_steps == 0 and update > 0:
             recap_utils.wait_for_everyone()
@@ -258,14 +266,16 @@ def process_one(lang: str, direction: str, experiment: str, seed: int, smoke_tes
                 unwrapped = accelerator.unwrap_model(policy)
                 val_translations = recap_utils.generate_batch(
                     unwrapped, tokenizer, val_df["source"].tolist(), cfg.INFERENCE_CONFIG,
+                    desc=f"{lang}/{direction}/{experiment} val@{update}",
                 )
                 val_scored = reward_engine.compute_raw_metrics(
                     val_df["source"].tolist(), val_translations, val_df["gold_truth"].tolist(),
+                    desc=f"{lang}/{direction}/{experiment} val@{update}",
                 )
                 valid = [s for s in val_scored if s["valid"] and math.isfinite(s["bleu"])]
                 if valid:
                     composite = sum((s["bleu"] + s["chrf"] + s["comet"]) / 3.0 for s in valid) / len(valid)
-                    print(f"[Eval] update={update} validation composite={composite:.4f}")
+                    tqdm.write(f"[Eval] update={update} validation composite={composite:.4f}")
                     if composite > best_composite:
                         best_composite = composite
                         unwrapped.save_pretrained(checkpoint_dir)

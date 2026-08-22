@@ -40,6 +40,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from tqdm import tqdm
+
 import config as cfg
 import recap_utils
 
@@ -47,6 +49,15 @@ COMET_MODEL_NAME = "Unbabel/wmt22-comet-da"
 COMET_BATCH_SIZE = 64
 EXTREME_LENGTH_RATIO = 10.0        # candidate > 10x reference length -> invalid
 EXTREME_LENGTH_CHARS_ABSOLUTE = 4000  # backstop cap, independent of reference length
+
+# Below this many rows, a tqdm bar is more noise than signal -- GRPO/PPO call
+# compute_raw_metrics()/score_raw_rows() every single training step with a
+# tiny rollout batch (a handful to a few dozen rows); printing a fresh
+# progress bar on every step would be exactly the kind of terminal spam this
+# project already fixed once for COMET/Lightning's own output. Bulk calls
+# (Stage 3 scoring, PreferenceBuilder, generate_batch on a full eval set) are
+# comfortably above this and always show real progress.
+TQDM_MIN_ITEMS = 200
 
 
 class RewardEngine:
@@ -121,13 +132,15 @@ class RewardEngine:
         candidates: list[str],
         references: list[str],
         precomputed: list[dict[str, float | None]] | None = None,
+        desc: str | None = None,
     ) -> list[dict[str, Any]]:
         """Returns one dict per row: bleu/chrf (0-1), comet, rep, len (all
         raw, un-standardized), plus a 'valid' flag. Invalid candidates
         (empty/malformed/extreme-length) are excluded from the sacrebleu/COMET
         calls entirely -- not just flagged afterward -- so a garbage rollout
         completion (which WILL happen during early GRPO/PPO training) can
-        never crash or skew a batched metric call."""
+        never crash or skew a batched metric call. `desc` labels the progress
+        bar (only shown above TQDM_MIN_ITEMS rows -- see module docstring)."""
         n = len(sources)
         valid_flags = [self._is_valid(candidates[i], references[i]) for i in range(n)]
         valid_idx = [i for i in range(n) if valid_flags[i]]
@@ -139,7 +152,8 @@ class RewardEngine:
         chrf_vals: dict[int, float] = {}
         if need_bleu_chrf and valid_idx:
             import sacrebleu
-            for i in valid_idx:
+            for i in tqdm(valid_idx, desc=(desc or "metrics") + " [sacrebleu]",
+                           disable=len(valid_idx) < TQDM_MIN_ITEMS):
                 if precomputed is not None and precomputed[i].get("bleu") is not None:
                     continue
                 bleu_vals[i] = sacrebleu.sentence_bleu(candidates[i], [references[i]]).score / 100.0
@@ -156,11 +170,15 @@ class RewardEngine:
                 model = self._get_comet_model()
                 data = [{"src": sources[i], "mt": candidates[i], "ref": references[i]} for i in comet_idx]
                 gpus = 1 if torch.cuda.is_available() else 0
+                # progress_bar=False deliberately -- COMET/Lightning's own
+                # progress bar is noisy (repeats DataLoader/GPU-availability
+                # chatter); we report progress at the batch level ourselves
+                # via tqdm around the row-assembly loop below instead.
                 output = model.predict(data, batch_size=COMET_BATCH_SIZE, gpus=gpus, progress_bar=False, num_workers=0)
                 comet_vals = dict(zip(comet_idx, output.scores))
 
         rows = []
-        for i in range(n):
+        for i in tqdm(range(n), desc=desc or "Scoring", disable=n < TQDM_MIN_ITEMS):
             candidate, reference = candidates[i], references[i]
             valid = valid_flags[i]
 
@@ -199,7 +217,7 @@ class RewardEngine:
 
     # -- fit / score / serialize -----------------------------------------
 
-    def fit(self, training_candidates) -> None:
+    def fit(self, training_candidates, desc: str = "Calibrating") -> None:
         """training_candidates: a pandas DataFrame with columns
         source, gold_truth, prediction, bleu, chrf, comet (bleu/chrf on 0-100
         scale, one row per (source, model) pair). Fits mu/sigma per quantity
@@ -212,7 +230,7 @@ class RewardEngine:
             training_candidates["source"].tolist(),
             training_candidates["prediction"].tolist(),
             training_candidates["gold_truth"].tolist(),
-            precomputed=precomputed,
+            precomputed=precomputed, desc=desc,
         )
         valid_rows = [
             r for r in rows
