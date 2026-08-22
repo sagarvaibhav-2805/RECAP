@@ -10,7 +10,25 @@ you know exactly what can run in parallel and what has to wait.
 Every command below is copy-pasteable from `RECAP/code/`.
 
 **Before committing to any of this on real HPC time**, smoke-test the whole
-pipeline on a tiny slice of data first -- see §14.
+pipeline on a tiny slice of data first — see §14.
+
+**Multi-GPU (`torchrun`)**: if you have multiple A100s to dedicate to a
+*single* job, Groups B, C, D, E (DPO/GRPO/PPO training — all 78 commands)
+support `torchrun` out of the box, since all three trainers are built on
+`accelerate` (TRL's `DPOTrainer`/`PPOTrainer`, and our own scratch GRPO loop)
+and auto-detect the distributed environment `torchrun` sets up — no code
+changes needed, and every DDP-safety mechanism already in the code (rank-aware
+sampling, NCCL timeout, frozen reference models never DDP-wrapped) applies
+identically under `torchrun`. Groups A, F, G, H (data prep, evaluate, report,
+human-eval) are CPU-only or single-process as written — `torchrun` doesn't
+apply to them (Group F specifically has no data-parallel sharding built in
+yet; wrapping it in `torchrun` would just make every rank redundantly
+evaluate the same thing, not go faster). All 78 commands in §3-§6 below are
+given in `torchrun` form; set `NGPUS_PER_JOB` once per shell session:
+
+```bash
+export NGPUS_PER_JOB=2   # how many A100s ONE job gets -- see the tradeoff note in §3
+```
 
 ---
 
@@ -59,9 +77,20 @@ group (and in most cases, across groups too — see the table below).
 
 **Practical read:** after Group A finishes for a direction, you can fire off
 that direction's 10 DPO jobs (Group B) + 1 `sft_grpo` job (Group C) + 1
-`sft_ppo` job (Group E) all at once — 12 simultaneous GPU jobs per direction,
-72 across all 6 directions, GPU-availability permitting. The scheduler queues
+`sft_ppo` job (Group E) all at once — 12 simultaneous jobs per direction, 72
+across all 6 directions, GPU-availability permitting. The scheduler queues
 whatever doesn't fit immediately. Only Group D needs an explicit wait.
+
+**GPUs-per-job vs. jobs-in-parallel is a real tradeoff**: with `NGPUS_PER_JOB`
+A100s per job, you can run `total_gpus / NGPUS_PER_JOB` jobs at once. Bigger
+`NGPUS_PER_JOB` speeds up any ONE run's wall-clock (data-parallel DDP) but
+leaves fewer GPUs free for OTHER jobs to run alongside it. With `NGPUS_PER_JOB=1`
+you get maximum job-level parallelism (matches the plain single-GPU commands
+from earlier revisions of this guide — just drop the `torchrun --standalone
+--nproc_per_node=$NGPUS_PER_JOB` prefix and call the script directly). For the
+60K+-row directions' `recap_dpo`/`recap_dpo_grpo`/`sft_ppo` runs, 2-4 GPUs per
+job is a reasonable starting point; the smaller ablation-preset DPO runs
+(fewer retained pairs) may not need more than 1.
 
 ---
 
@@ -70,7 +99,8 @@ whatever doesn't fit immediately. Only Group D needs an explicit wait.
 One job per direction. Cheap (CPU-only, metrics come from `maha_data_2`'s
 stored columns, no COMET reload) — a few minutes each. Each job runs Stages
 1-5 for that one direction, covering all 10 reward-preset experiments'
-pair-mining within it.
+pair-mining within it. No `torchrun` here — nothing GPU/model-related happens
+in Stages 1-5.
 
 ```bash
 # Job A1
@@ -121,7 +151,7 @@ perfectly reasonable if you'd rather not manage 6 tiny job submissions.
 
 ---
 
-## 3. Group B — DPO training (60 independent jobs, GPU)
+## 3. Group B — DPO training (60 independent jobs, GPU, `torchrun`)
 
 One job = one `(lang, direction, experiment)`. All 60 are mutually
 independent (each only touches its own `recap_dpo/<lang>/<direction>/<experiment>/`
@@ -132,151 +162,171 @@ ablation_full_reward_margin, ablation_full_recap`.
 
 ```bash
 # --- Bhili / hi2tgt ---
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_raw
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_quality_only
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_no_confidence
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_only
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_plus_rep
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_plus_len
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward_margin
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_recap
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_raw
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment dpo_no_confidence
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_plus_rep
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_quality_plus_len
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_reward_margin
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment ablation_full_recap
 
 # --- Bhili / tgt2hi ---
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_raw
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_quality_only
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_no_confidence
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment recap_dpo
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_only
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_plus_rep
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_plus_len
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_reward
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_reward_margin
-python recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_recap
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_raw
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment dpo_no_confidence
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment recap_dpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_plus_rep
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_quality_plus_len
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_reward
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_reward_margin
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction tgt2hi --experiment ablation_full_recap
 
 # --- Gondi / hi2tgt ---
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_raw
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_quality_only
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_no_confidence
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment recap_dpo
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_only
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_plus_rep
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_plus_len
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_reward
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_reward_margin
-python recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_recap
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_raw
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment dpo_no_confidence
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment recap_dpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_plus_rep
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_quality_plus_len
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_reward
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_reward_margin
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction hi2tgt --experiment ablation_full_recap
 
 # --- Gondi / tgt2hi ---
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_raw
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_quality_only
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_no_confidence
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment recap_dpo
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_only
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_plus_rep
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_plus_len
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_reward
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_reward_margin
-python recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_recap
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_raw
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment dpo_no_confidence
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment recap_dpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_plus_rep
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_quality_plus_len
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_reward
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_reward_margin
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Gondi --direction tgt2hi --experiment ablation_full_recap
 
 # --- Mundari / hi2tgt ---
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_raw
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_quality_only
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_no_confidence
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment recap_dpo
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_only
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_plus_rep
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_plus_len
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_reward
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_reward_margin
-python recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_recap
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_raw
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment dpo_no_confidence
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment recap_dpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_plus_rep
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_quality_plus_len
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_reward
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_reward_margin
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction hi2tgt --experiment ablation_full_recap
 
 # --- Mundari / tgt2hi ---
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_raw
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_quality_only
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_no_confidence
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment recap_dpo
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_only
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_plus_rep
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_plus_len
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_reward
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_reward_margin
-python recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_recap
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_raw
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment dpo_no_confidence
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment recap_dpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_only
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_plus_rep
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_quality_plus_len
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_reward
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_reward_margin
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Mundari --direction tgt2hi --experiment ablation_full_recap
 ```
 
-All 60 lines above, one line = one job. **Each line is its own single-GPU
-job** (matches the `qsub -I ... -lngpus=1` pattern used elsewhere in this
-project — see §6 for wrapping these as batch jobs).
+All 60 lines above, one line = one job, each using `$NGPUS_PER_JOB` A100s via
+DDP (matches the `qsub -I ... -lngpus=$NGPUS_PER_JOB` pattern — see §7 for
+wrapping these as batch jobs). Drop the `torchrun --standalone
+--nproc_per_node=$NGPUS_PER_JOB` prefix and call `python recap_train_dpo.py
+...` directly for plain single-GPU, single-process runs instead.
 
-Each is independently resumable (see §7) if a job dies mid-training, so it's
+Each is independently resumable (see §11) if a job dies mid-training, so it's
 safe to just resubmit the exact same line.
 
 ---
 
-## 4. Group C — pure GRPO, `sft_grpo` (6 independent jobs, GPU)
+## 4. Group C — pure GRPO, `sft_grpo` (6 independent jobs, GPU, `torchrun`)
 
 Only needs Group A (SFT checkpoint is pre-existing, never trained here).
 Independent of Group B entirely.
 
 ```bash
-python recap_train_grpo.py --lang Bhili   --direction hi2tgt --experiment sft_grpo
-python recap_train_grpo.py --lang Bhili   --direction tgt2hi --experiment sft_grpo
-python recap_train_grpo.py --lang Gondi   --direction hi2tgt --experiment sft_grpo
-python recap_train_grpo.py --lang Gondi   --direction tgt2hi --experiment sft_grpo
-python recap_train_grpo.py --lang Mundari --direction hi2tgt --experiment sft_grpo
-python recap_train_grpo.py --lang Mundari --direction tgt2hi --experiment sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili   --direction hi2tgt --experiment sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili   --direction tgt2hi --experiment sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Gondi   --direction hi2tgt --experiment sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Gondi   --direction tgt2hi --experiment sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Mundari --direction hi2tgt --experiment sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Mundari --direction tgt2hi --experiment sft_grpo
 ```
 
 ---
 
-## 5. Group D — RECAP-DPO+GRPO, `recap_dpo_grpo` (6 jobs, GPU, has a dependency)
+## 5. Group D — RECAP-DPO+GRPO, `recap_dpo_grpo` (6 jobs, GPU, `torchrun`, has a dependency)
 
 Each job here **requires that same (lang, direction)'s Group B `recap_dpo` run
 to have already finished** (it initializes from that checkpoint). Submit
 these only after the corresponding `recap_dpo` line from §3 has completed —
-or use a scheduler-level dependency (§6).
+or use a scheduler-level dependency (§7).
 
 ```bash
-python recap_train_grpo.py --lang Bhili   --direction hi2tgt --experiment recap_dpo_grpo
-python recap_train_grpo.py --lang Bhili   --direction tgt2hi --experiment recap_dpo_grpo
-python recap_train_grpo.py --lang Gondi   --direction hi2tgt --experiment recap_dpo_grpo
-python recap_train_grpo.py --lang Gondi   --direction tgt2hi --experiment recap_dpo_grpo
-python recap_train_grpo.py --lang Mundari --direction hi2tgt --experiment recap_dpo_grpo
-python recap_train_grpo.py --lang Mundari --direction tgt2hi --experiment recap_dpo_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili   --direction hi2tgt --experiment recap_dpo_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili   --direction tgt2hi --experiment recap_dpo_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Gondi   --direction hi2tgt --experiment recap_dpo_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Gondi   --direction tgt2hi --experiment recap_dpo_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Mundari --direction hi2tgt --experiment recap_dpo_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Mundari --direction tgt2hi --experiment recap_dpo_grpo
 ```
 
 ---
 
-## 6. Group E — PPO, `sft_ppo` (6 independent jobs, GPU)
+## 6. Group E — PPO, `sft_ppo` (6 independent jobs, GPU, `torchrun`)
 
 Only needs Group A. Independent of everything else.
 
 ```bash
-python recap_train_ppo.py --lang Bhili   --direction hi2tgt --experiment sft_ppo
-python recap_train_ppo.py --lang Bhili   --direction tgt2hi --experiment sft_ppo
-python recap_train_ppo.py --lang Gondi   --direction hi2tgt --experiment sft_ppo
-python recap_train_ppo.py --lang Gondi   --direction tgt2hi --experiment sft_ppo
-python recap_train_ppo.py --lang Mundari --direction hi2tgt --experiment sft_ppo
-python recap_train_ppo.py --lang Mundari --direction tgt2hi --experiment sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Bhili   --direction hi2tgt --experiment sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Bhili   --direction tgt2hi --experiment sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Gondi   --direction hi2tgt --experiment sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Gondi   --direction tgt2hi --experiment sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Mundari --direction hi2tgt --experiment sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Mundari --direction tgt2hi --experiment sft_ppo
 ```
 
 ---
 
 ## 7. Wrapping one line as an HPC job
 
-Every line in Groups B/C/D/E is a single-GPU job. Using the interactive
-pattern already established for this project:
+Every line in Groups B/C/D/E is a `$NGPUS_PER_JOB`-GPU job. Using the
+interactive pattern already established for this project, requesting as many
+GPUs as `NGPUS_PER_JOB`:
 
 ```bash
-qsub -I -P misn.mota2.spons -N recap_dpo_bhili_hi2tgt -lselect=1:ncpus=1:ngpus=1 -lwalltime=08:00:00
+qsub -I -P misn.mota2.spons -N recap_dpo_bhili_hi2tgt -lselect=1:ncpus=1:ngpus=2 -lwalltime=08:00:00
 # once the session opens:
 cd /path/to/RECAP/code
-python recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+export NGPUS_PER_JOB=2
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
 ```
 
 For non-interactive batch submission (recommended once you're launching 60+
-of these), put the same two lines in a small `.pbs` script and `qsub` it
-directly instead of `-I`:
+of these), put the same lines in a small `.pbs` script and `qsub` it directly
+instead of `-I` — note `ngpus` in the resource request must match
+`--nproc_per_node`:
+
+```bash
+#!/bin/bash
+#PBS -P misn.mota2.spons
+#PBS -N recap_dpo_bhili_hi2tgt
+#PBS -l select=1:ncpus=1:ngpus=2
+#PBS -l walltime=08:00:00
+
+cd /path/to/RECAP/code
+export NGPUS_PER_JOB=2
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+```
+
+For a plain single-GPU job (no `torchrun` needed at all), just request
+`ngpus=1` and call the script directly:
 
 ```bash
 #!/bin/bash
@@ -299,7 +349,8 @@ qsub -W depend=afterok:<job_id_of_recap_dpo_run> recap_dpo_grpo_job.pbs
 
 Walltime above (`08:00:00`) is a placeholder — size it to the dataset (a
 50K-row direction's `recap_dpo` run will take longer than a small ablation
-preset with a heavily-filtered pair set) and adjust per job.
+preset with a heavily-filtered pair set) and adjust per job; more GPUs per
+job (`NGPUS_PER_JOB`) should let you shrink it via DDP speedup.
 
 ---
 
@@ -312,7 +363,10 @@ python recap_evaluate.py
 Runs everything (all 14 experiments x all 6 directions) in one process. Can
 also be split into 6 per-direction jobs (`--lang X --direction Y`, no
 `--experiment`) if you'd rather not wait for every direction's training to
-finish before evaluating any of them.
+finish before evaluating any of them. **No `torchrun`** — `recap_evaluate.py`
+(via `recap_infer.py`) is a single-process, single-GPU decode/score loop with
+no data-parallel sharding built in; running it under `torchrun` would just
+have every rank redundantly evaluate the same full set, not divide the work.
 
 ---
 
@@ -338,7 +392,8 @@ python recap_human_eval_analysis.py --labeled_csv ../recap_human_eval/sample_rec
 ## 11. Resume — what happens if a job dies mid-run
 
 All three trainers are now resumable (walltime limits / preemption /
-crashes on HPC are common enough that this matters):
+crashes on HPC are common enough that this matters), and this works
+identically whether the job was launched with `torchrun` or plain `python`:
 
 - **Completion check**: every training script checks for
   `run_manifest.json` (written only at successful completion) before doing
@@ -357,8 +412,9 @@ crashes on HPC are common enough that this matters):
   the run completes successfully (it's not needed after that, and can be
   sizeable).
 
-So: **if a job dies, just resubmit the exact same command** -- no manual
-cleanup needed.
+So: **if a job dies, just resubmit the exact same command** (same
+`NGPUS_PER_JOB` or a different one — DDP-safe resume doesn't require the same
+GPU count as before) — no manual cleanup needed.
 
 ---
 
@@ -396,7 +452,8 @@ up in `recap_splits/<lang>/<direction>/`, so shrinking the input at Stage 1
 is enough to make the entire pipeline fast, with zero changes anywhere else.
 
 ```bash
-# One direction, 200 rows instead of ~200K:
+# One direction, 200 rows instead of ~200K, single-GPU (no torchrun needed
+# for a quick correctness check):
 python recap_split.py --lang Bhili --direction hi2tgt --n_samples 200
 python recap_calibrate.py --lang Bhili --direction hi2tgt
 python recap_score.py --lang Bhili --direction hi2tgt
@@ -426,6 +483,36 @@ Notes:
   `cfg.GRPO_SETTINGS.num_updates` / `cfg.PPO_SETTINGS.num_updates` down
   temporarily (e.g. 10) in `config.py` if you want a fast end-to-end check
   of those too, alongside the small `--n_samples` split.
+
+### 14b. Smoke-testing the multi-GPU (`torchrun`) path specifically
+
+The above catches logic bugs; it does **not** catch DDP-specific bugs
+(deadlocks, rank-collision in sampling, a hang on an NCCL barrier) since it
+never launches more than one process. Those are exactly the bugs you don't
+want to discover 3 hours into a real 60K-row `torchrun --nproc_per_node=4`
+run. Once §14's single-GPU smoke test passes, re-run the SAME tiny
+`--n_samples` split under `torchrun` with 2+ GPUs before trusting the full
+job list in §3-§6:
+
+```bash
+export NGPUS_PER_JOB=2   # or however many GPUs you'll actually use per job
+
+# (reuse the --n_samples 200 split + pairs from the single-GPU test above --
+# no need to redo recap_split.py/recap_mine_pairs.py/recap_balance_pairs.py)
+rm -rf ../recap_dpo/bhili/hi2tgt/recap_dpo   # clear the single-GPU test's checkpoint first
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_dpo.py --lang Bhili --direction hi2tgt --experiment recap_dpo
+
+rm -rf ../recap_grpo/bhili/hi2tgt/sft_grpo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_grpo.py --lang Bhili --direction hi2tgt --experiment sft_grpo
+
+rm -rf ../recap_ppo/bhili/hi2tgt/sft_ppo
+torchrun --standalone --nproc_per_node=$NGPUS_PER_JOB recap_train_ppo.py --lang Bhili --direction hi2tgt --experiment sft_ppo
+```
+
+If these finish (even a handful of updates for GRPO/PPO, per §14's
+`num_updates` tip) without hanging or erroring, the DDP path — rank-aware
+sampling, the NCCL timeout, frozen-reference isolation — is confirmed working
+before you commit real GPU-hours to it.
 
 ---
 
@@ -458,8 +545,8 @@ that same `(lang, direction)`:
    just a few updates.
 
 3. **Rerun without `--n_samples`** -- this now processes the full dataset,
-   and every stage after it (Groups B-E onward) runs exactly as documented
-   in §2-§10 above:
+   and every stage after it (Groups B-E onward, `torchrun`-wrapped if you're
+   using multiple GPUs per job) runs exactly as documented in §2-§10 above:
 
    ```bash
    python recap_split.py --lang Bhili --direction hi2tgt
